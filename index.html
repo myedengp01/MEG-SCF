@@ -806,9 +806,11 @@ async function saveDraftToSupabase(){
     }
     if(result.error){ alert('Failed to save draft: ' + result.error.message); return; }
     currentDraftId = result.data.id;
-    // keep local JSON backup too, unchanged from before
+    // Confirm the database save FIRST (alert() blocks until dismissed) so this
+    // never overlaps with the local Save As dialog triggered right after —
+    // previously both could appear stacked together, which looked like a false claim.
+    alert('Draft saved to database. A local backup copy will now be offered for download.');
     saveDraftLocal();
-    alert('Draft saved.');
   }catch(e){
     console.error(e);
     alert('Failed to save draft: ' + e.message);
