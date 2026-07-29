@@ -409,6 +409,8 @@
         <input type="text" id="serialHHMM" maxlength="4" placeholder="HHMM" oninput="updateSerial()">
         <input type="text" id="serialInitials" class="initials" maxlength="4" placeholder="INIT" oninput="updateSerial()">
       </div>
+      <div class="label" style="margin-top:8px;">Submission Timestamp</div>
+      <div class="serial-display" id="submissionTimestampDisplay" style="font-size:12px;">--</div>
     </div>
   </div>
 
@@ -443,6 +445,19 @@
     <div>
       <span>Date:</span>
       <input type="text" name="claimDate" id="claimDate" placeholder="DD/MM/YYYY HH:mm">
+    </div>
+    <div>
+      <span>Prepared By:</span>
+      <div class="combo-wrap combo-standalone" id="preparedByCombo" data-list-key="scf_staffList" data-onchange="onPreparedByManualChange">
+        <div class="combo-select-row">
+          <select class="combo-select" onchange="onPreparedBySelectChange(this)"></select>
+        </div>
+        <div class="combo-add-row">
+          <input type="text" class="combo-input" placeholder="New name...">
+          <button class="combo-confirm-btn" onclick="confirmComboAdd(this)">✓</button>
+          <button class="combo-cancel-btn" onclick="cancelComboAdd(this)">✗</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -496,19 +511,6 @@
     <div class="note">* For office use only</div>
     <div class="office-grid">
       <div>
-        <label>Prepared By</label>
-        <div class="combo-wrap combo-standalone" id="preparedByCombo" data-list-key="scf_staffList" data-onchange="checkSameClaimant">
-          <div class="combo-select-row">
-            <select class="combo-select" onchange="onComboSelectChange(this)" disabled></select>
-          </div>
-          <div class="combo-add-row">
-            <input type="text" class="combo-input" placeholder="New name...">
-            <button class="combo-confirm-btn" onclick="confirmComboAdd(this)">✓</button>
-            <button class="combo-cancel-btn" onclick="cancelComboAdd(this)">✗</button>
-          </div>
-        </div>
-      </div>
-      <div>
         <label>Checked By</label>
         <div class="combo-wrap combo-standalone" id="checkedByCombo" data-list-key="scf_staffList" data-onchange="checkSameClaimant">
           <div class="combo-select-row">
@@ -535,7 +537,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: MEG-FORMS v2026.07.29-12:00</span>
+    <span id="refStamp">Ref: MEG-FORMS v2026.07.29-16:30</span>
     <span>Page 1</span>
   </div>
 
@@ -572,12 +574,28 @@
   </div>
 </div>
 
+<!-- ============ ADMIN PASSWORD MODAL ============ -->
+<div class="modal-overlay" id="adminPwModal">
+  <div class="modal-box" style="width:340px;">
+    <h3 style="margin-top:0;">🔑 Admin Access</h3>
+    <div class="auth-error" id="adminPwError"></div>
+    <div class="pw-wrap">
+      <input type="password" id="adminPwInput" placeholder="Enter Admin password" style="width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;box-sizing:border-box;">
+      <button type="button" class="pw-toggle" onclick="togglePwVisibility('adminPwInput', this)">👁</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="auth-submit" style="flex:1;" onclick="confirmAdminPassword()">Confirm</button>
+      <button class="auth-submit" style="flex:1;background:#6b7280;" onclick="closeAdminPwModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ===================== CONFIG ===================== */
 const GOOGLE_CLIENT_ID = "215379470995-nb5h3akk1108k8fjjhjbu9ukjkojm4ng.apps.googleusercontent.com";
 const DRIVE_FOLDER_ID  = "1P3j-NC-PgDkDSnTujw3vYjCvvirpVuoG";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
-const VERSION_STAMP    = "MEG-FORMS v2026.07.29-12:00";
+const VERSION_STAMP    = "MEG-FORMS v2026.07.29-16:30";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
 const ADMIN_PASSWORD_HASH = "e753a01046cac4827512d6cfd4b1159411bdc13cce5a36ac7bc8b58526bcd4bb"; // sha256 of admin password, not stored in plain text
 let adminMode = false;
@@ -816,6 +834,7 @@ async function saveDraftToSupabase(){
 async function submitClaim(){
   if(!currentUser){ alert('Please sign in first.'); return; }
   if(!confirm('Submit this claim? Submitted claims can no longer be edited by you.')) return;
+  refreshSubmissionTimestamp(); // capture the actual moment of submission, not page-load time
   const payload = buildSubmissionPayload('submitted');
   try{
     let result;
@@ -880,6 +899,11 @@ async function updateUserPermission(userId, field, value){
         is_admin: field==='is_admin'?value:false
       });
     }
+    if(value){
+      // granting ANY permission means the user is now active, not pending
+      await sb.from('profiles').update({ status:'active' }).eq('id', userId).eq('status','pending');
+    }
+    await renderUsersManageTab(); // refresh the list so status label updates immediately
   }catch(e){
     console.error('Failed to update permission', e);
     alert('Failed to update permission: ' + e.message);
@@ -994,6 +1018,7 @@ function confirmComboAdd(btn){
   populateCombo(wrap, val); // select the new value on this specific combo
   wrap.querySelector('.combo-select-row').style.display = '';
   wrap.querySelector('.combo-add-row').style.display = 'none';
+  if(wrap.id === 'preparedByCombo') preparedByAutoSynced = false;
   const cbName = wrap.dataset.onchange;
   if(cbName && window[cbName]) window[cbName]();
 }
@@ -1028,6 +1053,14 @@ function nowParts(){
     ddmmyyyyhm: `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   };
 }
+function currentSubmissionTimestamp(){
+  const d = new Date();
+  return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function refreshSubmissionTimestamp(){
+  const el = document.getElementById('submissionTimestampDisplay');
+  if(el) el.textContent = currentSubmissionTimestamp();
+}
 
 function deriveInitials(name){
   if(!name) return "";
@@ -1050,6 +1083,7 @@ function init(){
   document.getElementById('claimDate').value = n.ddmmyyyyhm;
   document.getElementById('checkedDate').value = n.ddmmyyyyhm.split(' ')[0];
   document.getElementById('refStamp').textContent = `Ref: ${VERSION_STAMP}`;
+  refreshSubmissionTimestamp();
   onCompanyChange();
   seedBankNames();     // seed default banks if first run
   refreshDatalists(); // populate all combos from localStorage on load
@@ -1067,14 +1101,26 @@ function onCompanyChange(){
   updateSerial();
 }
 
+let preparedByAutoSynced = true; // stays true until the user manually edits Prepared By
 function onClaimedByChange(){
   const name = getComboVal(document.getElementById('claimedByCombo'));
   document.getElementById('serialInitials').value = deriveInitials(name);
   updateSerial();
   checkSameClaimant();
   syncAccountHolderLabel();
+  if(preparedByAutoSynced){
+    setComboVal(document.getElementById('preparedByCombo'), name);
+  }
   if(currentUser){ autoFillBankFromDirectorySupabase(name); }
   else { autoFillBankFromDirectory(); } // local-only fallback if somehow not signed in
+}
+function onPreparedBySelectChange(sel){
+  preparedByAutoSynced = false; // user is manually choosing — stop auto-following Claimed By
+  onComboSelectChange(sel);
+}
+function onPreparedByManualChange(){
+  preparedByAutoSynced = false;
+  checkSameClaimant();
 }
 
 /* ===================== BANK DIRECTORY ===================== */
@@ -1153,20 +1199,29 @@ async function sha256Hex(text){
   const buf = await crypto.subtle.digest('SHA-256', enc);
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
-async function toggleAdmin(){
+function toggleAdmin(){
   if(adminMode){
     adminMode = false;
     applyAdminUI();
     return;
   }
-  const pw = prompt("Enter Admin password:");
-  if(pw===null) return;
+  document.getElementById('adminPwError').textContent = '';
+  document.getElementById('adminPwInput').value = '';
+  document.getElementById('adminPwModal').style.display = 'flex';
+  setTimeout(()=>document.getElementById('adminPwInput').focus(), 50);
+}
+function closeAdminPwModal(){
+  document.getElementById('adminPwModal').style.display = 'none';
+}
+async function confirmAdminPassword(){
+  const pw = document.getElementById('adminPwInput').value;
   const hash = await sha256Hex(pw);
   if(hash === ADMIN_PASSWORD_HASH){
     adminMode = true;
     applyAdminUI();
+    closeAdminPwModal();
   } else {
-    alert("Incorrect password.");
+    document.getElementById('adminPwError').textContent = 'Incorrect password.';
   }
 }
 function applyAdminUI(){
@@ -1176,7 +1231,7 @@ function applyAdminUI(){
   document.getElementById('btnLoadDrive').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnSyncLists').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnManageLists').style.display = adminMode ? 'inline-block' : 'none';
-  ['preparedByCombo','checkedByCombo'].forEach(id=>{
+  ['checkedByCombo'].forEach(id=>{
     const wrap = document.getElementById(id);
     if(wrap) wrap.querySelector('.combo-select').disabled = !adminMode;
   });
@@ -1666,6 +1721,11 @@ function doPrint(){
 }
 
 /* ===================== BOOT ===================== */
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Enter' && document.getElementById('adminPwModal').style.display === 'flex'){
+    confirmAdminPassword();
+  }
+});
 window.onload = async function(){
   init(); // sets up UI defaults, serial number, blank rows etc. (unchanged from before)
   showAuthBox('login');
