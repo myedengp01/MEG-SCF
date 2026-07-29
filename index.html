@@ -378,7 +378,6 @@
   <button id="btnSyncLists" onclick="syncSharedLists()" style="display:none">🔄 Sync Lists</button>
   <button id="btnManageLists" onclick="openManageModal()" style="display:none">📋 Manage Lists</button>
   <button onclick="doPrint()">🖨️ Print / Save PDF</button>
-  <button id="btnAdmin" onclick="toggleAdmin()">🔑 Admin</button>
   <span class="tag" id="adminIndicator" style="display:none;background:#2e8b57;border-radius:5px;padding:5px 10px;">Admin Mode Active</span>
 </div>
 
@@ -574,21 +573,7 @@
   </div>
 </div>
 
-<!-- ============ ADMIN PASSWORD MODAL ============ -->
-<div class="modal-overlay" id="adminPwModal">
-  <div class="modal-box" style="width:340px;">
-    <h3 style="margin-top:0;">🔑 Admin Access</h3>
-    <div class="auth-error" id="adminPwError"></div>
-    <div class="pw-wrap">
-      <input type="password" id="adminPwInput" placeholder="Enter Admin password" style="width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;box-sizing:border-box;">
-      <button type="button" class="pw-toggle" onclick="togglePwVisibility('adminPwInput', this)">👁</button>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="auth-submit" style="flex:1;" onclick="confirmAdminPassword()">Confirm</button>
-      <button class="auth-submit" style="flex:1;background:#6b7280;" onclick="closeAdminPwModal()">Cancel</button>
-    </div>
-  </div>
-</div>
+
 
 <script>
 /* ===================== CONFIG ===================== */
@@ -597,7 +582,6 @@ const DRIVE_FOLDER_ID  = "1P3j-NC-PgDkDSnTujw3vYjCvvirpVuoG";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
 const VERSION_STAMP    = "MEG-FORMS-SCF v2026.07.29-16:30";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
-const ADMIN_PASSWORD_HASH = "e753a01046cac4827512d6cfd4b1159411bdc13cce5a36ac7bc8b58526bcd4bb"; // sha256 of admin password, not stored in plain text
 let adminMode = false;
 
 /* ===================== SUPABASE CONFIG ===================== */
@@ -730,7 +714,7 @@ async function onAuthReady(){
   await loadSharedListsFromSupabase();
   refreshDatalists();
   if(currentPerm.is_admin){
-    adminMode = true; // SCF office-use unlock is now tied to real DB permission, not just JS password
+    adminMode = true; // adminMode is now driven solely by the real Supabase form_permissions.is_admin flag
     applyAdminUI();
   }
 }
@@ -1194,39 +1178,8 @@ function checkSameClaimant(){
 }
 
 /* ===================== ADMIN MODE ===================== */
-async function sha256Hex(text){
-  const enc = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-function toggleAdmin(){
-  if(adminMode){
-    adminMode = false;
-    applyAdminUI();
-    return;
-  }
-  document.getElementById('adminPwError').textContent = '';
-  document.getElementById('adminPwInput').value = '';
-  document.getElementById('adminPwModal').style.display = 'flex';
-  setTimeout(()=>document.getElementById('adminPwInput').focus(), 50);
-}
-function closeAdminPwModal(){
-  document.getElementById('adminPwModal').style.display = 'none';
-}
-async function confirmAdminPassword(){
-  const pw = document.getElementById('adminPwInput').value;
-  const hash = await sha256Hex(pw);
-  if(hash === ADMIN_PASSWORD_HASH){
-    adminMode = true;
-    applyAdminUI();
-    closeAdminPwModal();
-  } else {
-    document.getElementById('adminPwError').textContent = 'Incorrect password.';
-  }
-}
 function applyAdminUI(){
   document.getElementById('adminIndicator').style.display = adminMode ? 'inline' : 'none';
-  document.getElementById('btnAdmin').textContent = adminMode ? '🔒 Lock' : '🔑 Admin';
   document.getElementById('btnLoadDraft').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnLoadDrive').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnSyncLists').style.display = adminMode ? 'inline-block' : 'none';
@@ -1721,11 +1674,6 @@ function doPrint(){
 }
 
 /* ===================== BOOT ===================== */
-document.addEventListener('keydown', function(e){
-  if(e.key === 'Enter' && document.getElementById('adminPwModal').style.display === 'flex'){
-    confirmAdminPassword();
-  }
-});
 window.onload = async function(){
   init(); // sets up UI defaults, serial number, blank rows etc. (unchanged from before)
   showAuthBox('login');
