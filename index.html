@@ -713,6 +713,16 @@ async function onAuthReady(){
 
   await loadSharedListsFromSupabase();
   refreshDatalists();
+
+  // Auto-fill Claimed By with the signed-in user's name (still fully editable —
+  // e.g. if someone is filing on behalf of a colleague) so the serial number,
+  // filename, and Prepared By all populate immediately without a manual step.
+  const claimedByCombo = document.getElementById('claimedByCombo');
+  if(currentProfile?.full_name && !getComboVal(claimedByCombo)){
+    setComboVal(claimedByCombo, currentProfile.full_name);
+    onClaimedByChange();
+  }
+
   if(currentPerm.is_admin){
     adminMode = true; // adminMode is now driven solely by the real Supabase form_permissions.is_admin flag
     applyAdminUI();
