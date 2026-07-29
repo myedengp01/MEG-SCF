@@ -609,8 +609,9 @@ async function onAuthReady(){
   const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
   currentProfile = profile;
 
-  const { data: perm } = await sb.from('form_permissions').select('*')
+  const { data: perm, error: permError } = await sb.from('form_permissions').select('*')
     .eq('user_id', user.id).eq('form_code', FORM_CODE).maybeSingle();
+  if(permError) console.error('Failed to load form_permissions (check RLS policies):', permError);
   currentPerm = perm || null;
 
   if(!currentPerm || !currentPerm.can_submit){
