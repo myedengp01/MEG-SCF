@@ -537,7 +537,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.07.29-18:00</span>
+    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.07.30-18:00</span>
     <span>Page 1</span>
   </div>
 
@@ -581,7 +581,7 @@
 const GOOGLE_CLIENT_ID = "215379470995-nb5h3akk1108k8fjjhjbu9ukjkojm4ng.apps.googleusercontent.com";
 const DRIVE_FOLDER_ID  = "1P3j-NC-PgDkDSnTujw3vYjCvvirpVuoG";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
-const VERSION_STAMP    = "MEG-FORMS-SCF v2026.07.29-18:00";
+const VERSION_STAMP    = "MEG-FORMS-SCF v2026.07.30-18:00";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
 let adminMode = false;
 
@@ -833,6 +833,7 @@ async function submitClaim(){
   if(!confirm('Submit this claim? Submitted claims can no longer be edited by you.')) return;
   refreshSubmissionTimestamp(); // capture the actual moment of submission, not page-load time
   const payload = buildSubmissionPayload('submitted');
+  payload.submitted_at = new Date().toISOString();
   try{
     let result;
     if(currentDraftId){
