@@ -212,6 +212,22 @@
   }
   .drive-file-item:hover{background:#f0f4fa;}
   .modal-close{cursor:pointer;font-weight:700;color:var(--muted);font-size:18px;line-height:1;}
+  .receipt-cell{text-align:center;}
+  .receipt-btn{
+    border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 8px;
+    cursor:pointer;font-size:12px;color:var(--navy);
+  }
+  .receipt-btn.has-receipts{background:var(--navy);color:#fff;border-color:var(--navy);}
+  .receipt-thumbs{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0;}
+  .receipt-thumb{position:relative;width:100px;}
+  .receipt-thumb img{width:100px;height:100px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block;}
+  .receipt-thumb .del-btn{
+    position:absolute;top:-6px;right:-6px;background:#c0392b;color:#fff;border:none;
+    border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;
+  }
+  .receipt-add-row{display:flex;gap:8px;align-items:center;margin-top:10px;}
+  .receipt-add-row input{flex:1;}
+  .receipt-status{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px;}
   .manage-tab-btn{
     padding:6px 14px;border:1px solid var(--navy);border-radius:6px;background:#fff;
     color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;
@@ -292,6 +308,7 @@
     table.claim-table tr.empty-row{height:22px;}
     table.claim-table tr.empty-row td{padding:0;border-bottom:1px solid #e0e3e8;color:transparent;}
     .footer-stamp{margin-top:8px;}
+    .receipt-page-title{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:6px;}
   }
 </style>
 </head>
@@ -466,9 +483,10 @@
       <tr>
         <th style="width:26px">No.</th>
         <th style="width:78px">Date</th>
-        <th style="width:190px">Supplier</th>
-        <th style="width:110px">Item(s) / Bill / Inv No</th>
-        <th style="width:90px">Amount (RM)</th>
+        <th style="width:170px">Supplier</th>
+        <th style="width:100px">Item(s) / Bill / Inv No</th>
+        <th style="width:80px">Amount (RM)</th>
+        <th style="width:64px">Receipt</th>
         <th style="width:24px"></th>
       </tr>
     </thead>
@@ -554,6 +572,19 @@
     <span class="modal-close" onclick="closeDriveModal()">✕</span>
     <h3>Load Draft from Google Drive</h3>
     <div id="driveFileList">Loading...</div>
+  </div>
+</div>
+
+<!-- ============ RECEIPT ATTACHMENT MODAL ============ -->
+<div class="modal-overlay" id="receiptModal">
+  <div class="modal-box" style="width:420px;">
+    <span class="modal-close" onclick="closeReceiptPanel()">✕</span>
+    <h3 id="receiptModalTitle">Receipts</h3>
+    <div class="receipt-thumbs" id="receiptThumbs"></div>
+    <div class="receipt-add-row">
+      <input type="file" id="receiptFileInput" accept="image/*" capture="environment">
+    </div>
+    <div class="receipt-status" id="receiptStatus"></div>
   </div>
 </div>
 
@@ -1214,6 +1245,7 @@ function addRow(data){
   const tbody = document.getElementById('rowsBody');
   const tr = document.createElement('tr');
   tr.dataset.rid = rowCounter;
+  tr.dataset.receipts = JSON.stringify((data && data.receipts) || []);
   tr.innerHTML = `
     <td class="no">${tbody.children.length+1}</td>
     <td><input type="text" class="r-date" placeholder="DD-MM-YYYY" value="${data?escapeHtml(data.date):''}" onblur="expandDateYear(this)"></td>
@@ -1231,10 +1263,12 @@ function addRow(data){
     </td>
     <td><input type="text" class="r-item" value="${data?escapeHtml(data.item):''}"></td>
     <td class="amt"><input type="number" step="0.01" class="r-amount" value="${data?Number(data.amount).toFixed(2):''}" oninput="recalcTotal()" onblur="formatAmount(this)"></td>
+    <td class="receipt-cell"><button type="button" class="receipt-btn" onclick="openReceiptPanel(this.closest('tr'))">📎 <span class="receipt-count"></span></button></td>
     <td class="rm"><button class="rm-btn" onclick="removeRow(this)">✕</button></td>
   `;
   tbody.appendChild(tr);
   renumberRows();
+  updateReceiptButton(tr);
 }
 function removeRow(btn){
   btn.closest('tr').remove();
@@ -1259,6 +1293,131 @@ function recalcTotal(){
   document.getElementById('totalDisplay').textContent = total.toFixed(2);
   return total;
 }
+
+/* ---------- Receipt photo attachments ---------- */
+let currentReceiptRow = null;
+
+function updateReceiptButton(tr){
+  const receipts = JSON.parse(tr.dataset.receipts || '[]');
+  const btn = tr.querySelector('.receipt-btn');
+  const countEl = tr.querySelector('.receipt-count');
+  countEl.textContent = receipts.length > 0 ? receipts.length : '';
+  btn.classList.toggle('has-receipts', receipts.length > 0);
+}
+
+// A new claim has no submission id until first saved — receipts need a stable
+// folder to upload into, so silently save a draft first if one doesn't exist
+// yet. Deliberately skips the "local backup download" prompt saveDraftToSupabase()
+// normally shows, since that would be a jarring surprise mid-attach-a-photo flow.
+async function ensureDraftSaved(){
+  if(currentDraftId) return currentDraftId;
+  if(!currentUser){ alert('Please sign in first.'); return null; }
+  const payload = buildSubmissionPayload('draft');
+  const result = await sb.from('scf_submissions').insert(payload).select().single();
+  if(result.error){ alert('Failed to prepare draft for receipt upload: ' + result.error.message); return null; }
+  currentDraftId = result.data.id;
+  return currentDraftId;
+}
+
+function openReceiptPanel(tr){
+  currentReceiptRow = tr;
+  const supplier = tr.querySelector('.combo-select')?.selectedOptions[0]?.textContent || '';
+  document.getElementById('receiptModalTitle').textContent = supplier ? `Receipts — ${supplier}` : 'Receipts';
+  document.getElementById('receiptStatus').textContent = '';
+  renderReceiptThumbs();
+  document.getElementById('receiptModal').style.display = 'flex';
+}
+function closeReceiptPanel(){
+  document.getElementById('receiptModal').style.display = 'none';
+  currentReceiptRow = null;
+}
+
+// Only the stable Storage path is ever persisted in the claim data — a signed
+// URL is time-limited and would go dead if baked into a submission that gets
+// reviewed or printed weeks later. Fresh signed URLs are always fetched here,
+// on demand, whenever thumbnails actually need to be displayed.
+async function renderReceiptThumbs(){
+  const thumbsEl = document.getElementById('receiptThumbs');
+  const receipts = JSON.parse(currentReceiptRow.dataset.receipts || '[]');
+  if(receipts.length === 0){ thumbsEl.innerHTML = '<div style="color:var(--muted);font-size:13px;">No receipts attached yet.</div>'; return; }
+  thumbsEl.innerHTML = receipts.map(() => `<div style="color:var(--muted);font-size:12px;">Loading…</div>`).join('');
+  const withUrls = await Promise.all(receipts.map(async r => {
+    const { data } = await sb.storage.from('scf-receipts').createSignedUrl(r.path, 300); // 5 min, just for this preview
+    return { ...r, signedUrl: data?.signedUrl || '' };
+  }));
+  thumbsEl.innerHTML = withUrls.map((r, idx) => `
+    <div class="receipt-thumb">
+      <img src="${r.signedUrl}" alt="Receipt">
+      <button type="button" class="del-btn" onclick="deleteReceipt(${idx})">✕</button>
+    </div>`).join('');
+}
+
+// Downscale + compress before upload — a full-resolution phone photo is far
+// more detail than a printed receipt needs, and keeps Storage costs down.
+function resizeReceiptImage(file, maxDim = 1400, quality = 0.8){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Failed to compress image')), 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+document.getElementById('receiptFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if(!file || !currentReceiptRow) return;
+  const statusEl = document.getElementById('receiptStatus');
+  const tr = currentReceiptRow;
+  statusEl.textContent = 'Preparing…';
+  try{
+    const draftId = await ensureDraftSaved();
+    if(!draftId) return;
+    statusEl.textContent = 'Compressing image…';
+    const blob = await resizeReceiptImage(file);
+    const path = `${draftId}/${tr.dataset.rid}/${Date.now()}.jpg`;
+    statusEl.textContent = 'Uploading…';
+    const { error: upErr } = await sb.storage.from('scf-receipts').upload(path, blob, { contentType: 'image/jpeg' });
+    if(upErr){ statusEl.textContent = 'Upload failed: ' + upErr.message; return; }
+    const receipts = JSON.parse(tr.dataset.receipts || '[]');
+    receipts.push({ path });
+    tr.dataset.receipts = JSON.stringify(receipts);
+    updateReceiptButton(tr);
+    await renderReceiptThumbs();
+    statusEl.textContent = 'Attached.';
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Something went wrong: ' + err.message;
+  }finally{
+    e.target.value = '';
+  }
+});
+
+async function deleteReceipt(idx){
+  if(!currentReceiptRow) return;
+  if(!confirm('Remove this receipt photo?')) return;
+  const tr = currentReceiptRow;
+  const receipts = JSON.parse(tr.dataset.receipts || '[]');
+  const [removed] = receipts.splice(idx, 1);
+  tr.dataset.receipts = JSON.stringify(receipts);
+  updateReceiptButton(tr);
+  renderReceiptThumbs();
+  if(removed?.path){
+    const { error } = await sb.storage.from('scf-receipts').remove([removed.path]);
+    if(error) console.error('Failed to delete receipt from storage (non-fatal):', error);
+  }
+}
+
 document.addEventListener('input', e=>{
   if(e.target.classList.contains('r-amount')) recalcTotal();
 });
@@ -1271,7 +1430,8 @@ function collectDraft(){
       date: tr.querySelector('.r-date').value,
       supplier: getComboVal(tr.querySelector('.combo-wrap')),
       item: tr.querySelector('.r-item').value,
-      amount: parseFloat(tr.querySelector('.r-amount').value)||0
+      amount: parseFloat(tr.querySelector('.r-amount').value)||0,
+      receipts: JSON.parse(tr.dataset.receipts || '[]')
     });
   });
   return {
@@ -1676,7 +1836,120 @@ function expandDateYear(input){
     input.value = `${dd.padStart(2,'0')}-${mm.padStart(2,'0')}-${yy}`;
   }
 }
-function doPrint(){
+/* ---------- Receipt photos: A4-efficient print layout ---------- */
+// Classic "justified gallery" packing: images of whatever natural aspect ratio
+// get grouped into shelf rows, then each completed row is scaled so it fills
+// the page width exactly — this is what avoids the "one receipt per page"
+// waste, since a row naturally holds however many images fit at a sensible height.
+function packJustifiedRows(items, pageWidthMm, targetRowHeightMm, gapMm, minRowHeightMm){
+  const rows = [];
+  let shelf = [];
+  let sumWidths = 0;
+  const widthAtTarget = it => targetRowHeightMm * it.aspect;
+
+  function finishRow(shelfItems, sumW, isLast){
+    const gaps = gapMm * (shelfItems.length - 1);
+    const availableForImages = pageWidthMm - gaps;
+    let scale = availableForImages / sumW;
+    let rowH = targetRowHeightMm * scale;
+    // Don't blow up a lonely trailing photo just to fill the row width
+    if(isLast && shelfItems.length < 3 && rowH > targetRowHeightMm * 1.3){
+      rowH = targetRowHeightMm;
+    }
+    rowH = Math.max(minRowHeightMm, rowH);
+    return { height: rowH, items: shelfItems.map(it => ({ ...it, width: rowH * it.aspect })) };
+  }
+
+  items.forEach(it=>{
+    const w = widthAtTarget(it);
+    const gapsIfAdded = gapMm * shelf.length;
+    if(shelf.length > 0 && (sumWidths + w + gapsIfAdded) > pageWidthMm){
+      rows.push(finishRow(shelf, sumWidths, false));
+      shelf = []; sumWidths = 0;
+    }
+    shelf.push(it);
+    sumWidths += w;
+  });
+  if(shelf.length > 0) rows.push(finishRow(shelf, sumWidths, true));
+  return rows;
+}
+
+async function buildReceiptPrintPages(){
+  const items = [];
+  document.querySelectorAll('#rowsBody tr').forEach(tr=>{
+    const receipts = JSON.parse(tr.dataset.receipts || '[]');
+    if(receipts.length === 0) return;
+    const date = tr.querySelector('.r-date').value;
+    const supplier = getComboVal(tr.querySelector('.combo-wrap'));
+    const item = tr.querySelector('.r-item').value;
+    const amount = parseFloat(tr.querySelector('.r-amount').value) || 0;
+    const caption = `${date} · ${supplier}${item ? ' — ' + item : ''} · RM ${amount.toFixed(2)}`;
+    receipts.forEach(r => items.push({ path: r.path, caption }));
+  });
+  if(items.length === 0) return;
+
+  // Download each receipt and measure its natural aspect ratio — printing
+  // needs live, valid image access regardless of how old the attachment is,
+  // so this always fetches fresh rather than relying on any stored URL.
+  const loaded = [];
+  for(const it of items){
+    try{
+      const { data: blob, error } = await sb.storage.from('scf-receipts').download(it.path);
+      if(error || !blob) continue;
+      const url = URL.createObjectURL(blob);
+      const dims = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => reject(new Error('Failed to decode image'));
+        img.src = url;
+      });
+      loaded.push({ ...it, url, aspect: dims.w / dims.h });
+    }catch(e){ console.error('Skipping a receipt that failed to load for print:', it.path, e); }
+  }
+  if(loaded.length === 0) return;
+
+  const PAGE_W_MM = 182;   // 210mm A4 minus 14mm left/right padding, matching .print-page CSS
+  const PAGE_H_MM = 260;   // 297mm A4 minus top/bottom padding and room for the page footer
+  const GAP_MM = 4;
+  const CAPTION_H_MM = 6;
+  const TARGET_ROW_H_MM = 55;
+  const MIN_ROW_H_MM = 32;
+
+  const rows = packJustifiedRows(loaded, PAGE_W_MM, TARGET_ROW_H_MM, GAP_MM, MIN_ROW_H_MM);
+  const printArea = document.getElementById('printArea');
+
+  let page, pageUsedH, pageNum = 0;
+  function newPage(){
+    pageNum++;
+    page = document.createElement('div');
+    page.className = 'print-page';
+    const title = document.createElement('div');
+    title.className = 'receipt-page-title';
+    title.textContent = pageNum === 1 ? 'Supporting Receipts' : 'Supporting Receipts (continued)';
+    page.appendChild(title);
+    printArea.appendChild(page);
+    pageUsedH = 10;
+  }
+  newPage();
+
+  rows.forEach(row=>{
+    const rowNeededH = row.height + CAPTION_H_MM + GAP_MM;
+    if(pageUsedH + rowNeededH > PAGE_H_MM) newPage();
+    const rowEl = document.createElement('div');
+    rowEl.style.cssText = `display:flex;gap:${GAP_MM}mm;margin-bottom:${GAP_MM}mm;align-items:flex-start;`;
+    row.items.forEach(it=>{
+      const cell = document.createElement('div');
+      cell.style.cssText = `width:${it.width}mm;`;
+      cell.innerHTML = `<img src="${it.url}" style="width:${it.width}mm;height:${row.height}mm;object-fit:cover;border:1px solid #ccc;border-radius:2px;display:block;">
+        <div style="font-size:7pt;color:#555;margin-top:1mm;line-height:1.2;">${escapeHtml(it.caption)}</div>`;
+      rowEl.appendChild(cell);
+    });
+    page.appendChild(rowEl);
+    pageUsedH += rowNeededH;
+  });
+}
+
+async function doPrint(){
   const pdfName = buildFilenameBase() || 'Staff_Claim_Form';
   // Set title as early as possible — before buildPrintPages so browser
   // has maximum time to register it before the print dialog opens.
@@ -1684,6 +1957,7 @@ function doPrint(){
   window.onbeforeprint = ()=>{ document.title = pdfName; }; // belt-and-braces
   window.onafterprint  = ()=>{ document.title = 'Staff Misc Claim Form (SCF)'; };
   buildPrintPages();
+  await buildReceiptPrintPages(); // appends supplementary pages after the claim itself
   setTimeout(()=>window.print(), 200);
 }
 
