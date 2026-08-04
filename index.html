@@ -232,6 +232,29 @@
     color:var(--navy);font-size:13.5px;font-weight:600;cursor:pointer;
   }
   .receipt-source-btn:hover{background:var(--navy);color:#fff;}
+  .receipt-source-btn.primary{background:var(--navy);color:#fff;}
+  .crop-stage-wrap{text-align:center;}
+  .crop-stage{
+    position:relative;display:inline-block;max-width:100%;
+    background:#111;border-radius:8px;touch-action:none;user-select:none;
+    line-height:0;
+  }
+  .crop-stage img{display:block;max-width:100%;max-height:60vh;pointer-events:none;}
+  .crop-box{
+    position:absolute;border:2px solid #fff;box-shadow:0 0 0 2000px rgba(0,0,0,.5);
+    cursor:move;touch-action:none;
+  }
+  .crop-handle{
+    position:absolute;width:20px;height:20px;background:#fff;border:2px solid var(--navy);
+    border-radius:50%;touch-action:none;
+  }
+  .crop-handle[data-h="nw"]{top:-10px;left:-10px;cursor:nwse-resize;}
+  .crop-handle[data-h="ne"]{top:-10px;right:-10px;cursor:nesw-resize;}
+  .crop-handle[data-h="sw"]{bottom:-10px;left:-10px;cursor:nesw-resize;}
+  .crop-handle[data-h="se"]{bottom:-10px;right:-10px;cursor:nwse-resize;}
+  .crop-hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:8px;}
+  .enhance-toggle{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:12px;cursor:pointer;}
+  .crop-actions{display:flex;gap:8px;margin-top:14px;}
   .receipt-status{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px;}
   .manage-tab-btn{
     padding:6px 14px;border:1px solid var(--navy);border-radius:6px;background:#fff;
@@ -593,6 +616,33 @@
       <input type="file" id="receiptGalleryInput" accept="image/*" style="display:none;">
     </div>
     <div class="receipt-status" id="receiptStatus"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="receiptEditModal">
+  <div class="modal-box" style="width:min(94vw, 480px);">
+    <span class="modal-close" onclick="cancelReceiptEdit()">✕</span>
+    <h3>Adjust Receipt</h3>
+    <div class="crop-stage-wrap">
+      <div class="crop-stage" id="cropStage">
+        <img id="cropImage" draggable="false" alt="Receipt to crop">
+        <div class="crop-box" id="cropBox">
+          <div class="crop-handle" data-h="nw"></div>
+          <div class="crop-handle" data-h="ne"></div>
+          <div class="crop-handle" data-h="sw"></div>
+          <div class="crop-handle" data-h="se"></div>
+        </div>
+      </div>
+    </div>
+    <div class="crop-hint">Drag the corners to crop, or drag inside the box to move it.</div>
+    <label class="enhance-toggle">
+      <input type="checkbox" id="enhanceToggle" checked>
+      ✨ Enhance (boost contrast, like a document scan)
+    </label>
+    <div class="crop-actions">
+      <button type="button" class="receipt-source-btn" onclick="cancelReceiptEdit()">Cancel</button>
+      <button type="button" class="receipt-source-btn primary" id="usePhotoBtn">Use Photo</button>
+    </div>
   </div>
 </div>
 
@@ -1362,37 +1412,142 @@ async function renderReceiptThumbs(){
 
 // Downscale + compress before upload — a full-resolution phone photo is far
 // more detail than a printed receipt needs, and keeps Storage costs down.
-function resizeReceiptImage(file, maxDim = 1400, quality = 0.8){
+/* ---------- Crop + Enhance editor (shown between photo selection and upload) ---------- */
+let cropFile = null;
+let cropRect = { x: 8, y: 8, w: 84, h: 84 }; // percentages of the displayed image
+let cropDragMode = null;   // null | 'move' | 'nw' | 'ne' | 'sw' | 'se'
+let cropDragStart = null;
+
+function clampNum(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+function openCropEditor(file){
+  cropFile = file;
+  const imgEl = document.getElementById('cropImage');
+  const url = URL.createObjectURL(file);
+  imgEl.onload = () => {
+    cropRect = { x: 8, y: 8, w: 84, h: 84 };
+    positionCropBox();
+  };
+  imgEl.src = url;
+  document.getElementById('enhanceToggle').checked = true;
+  document.getElementById('receiptEditModal').style.display = 'flex';
+}
+function cancelReceiptEdit(){
+  document.getElementById('receiptEditModal').style.display = 'none';
+  cropFile = null;
+}
+function positionCropBox(){
+  const boxEl = document.getElementById('cropBox');
+  boxEl.style.left = cropRect.x + '%';
+  boxEl.style.top = cropRect.y + '%';
+  boxEl.style.width = cropRect.w + '%';
+  boxEl.style.height = cropRect.h + '%';
+}
+function stagePercentFromEvent(e){
+  const rect = document.getElementById('cropStage').getBoundingClientRect();
+  return {
+    x: clampNum(((e.clientX - rect.left) / rect.width) * 100, 0, 100),
+    y: clampNum(((e.clientY - rect.top) / rect.height) * 100, 0, 100)
+  };
+}
+function onCropPointerDown(e, mode){
+  cropDragMode = mode;
+  const p = stagePercentFromEvent(e);
+  cropDragStart = { px: p.x, py: p.y, rect: { ...cropRect } };
+  e.preventDefault();
+}
+function onCropPointerMove(e){
+  if(!cropDragMode) return;
+  const p = stagePercentFromEvent(e);
+  const dx = p.x - cropDragStart.px, dy = p.y - cropDragStart.py;
+  const r0 = cropDragStart.rect;
+  let r = { ...r0 };
+  if(cropDragMode === 'move'){
+    r.x = clampNum(r0.x + dx, 0, 100 - r0.w);
+    r.y = clampNum(r0.y + dy, 0, 100 - r0.h);
+  } else {
+    if(cropDragMode.includes('w')){ const right = r0.x + r0.w; r.x = clampNum(r0.x + dx, 0, right - 5); r.w = right - r.x; }
+    if(cropDragMode.includes('e')){ r.w = clampNum(r0.w + dx, 5, 100 - r0.x); }
+    if(cropDragMode.includes('n')){ const bottom = r0.y + r0.h; r.y = clampNum(r0.y + dy, 0, bottom - 5); r.h = bottom - r.y; }
+    if(cropDragMode.includes('s')){ r.h = clampNum(r0.h + dy, 5, 100 - r0.y); }
+  }
+  cropRect = r;
+  positionCropBox();
+}
+function onCropPointerUp(){ cropDragMode = null; cropDragStart = null; }
+
+document.getElementById('cropBox').addEventListener('pointerdown', e=>{
+  if(e.target.classList.contains('crop-handle')) return;
+  onCropPointerDown(e, 'move');
+});
+document.querySelectorAll('.crop-handle').forEach(h=>{
+  h.addEventListener('pointerdown', e => onCropPointerDown(e, h.dataset.h));
+});
+document.addEventListener('pointermove', onCropPointerMove);
+document.addEventListener('pointerup', onCropPointerUp);
+
+// Crops to the selected rectangle (mapped to the image's natural pixel size),
+// optionally boosts contrast/brightness for a "document scan" look, and caps
+// the output resolution — all in one canvas pass.
+function cropAndEnhanceToBlob(){
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      let { width, height } = img;
-      if(width > maxDim || height > maxDim){
-        const scale = maxDim / Math.max(width, height);
-        width = Math.round(width * scale);
-        height = Math.round(height * scale);
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width; canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Failed to compress image')), 'image/jpeg', quality);
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
+    const imgEl = document.getElementById('cropImage');
+    const nw = imgEl.naturalWidth, nh = imgEl.naturalHeight;
+    const sx = (cropRect.x / 100) * nw, sy = (cropRect.y / 100) * nh;
+    const sw = (cropRect.w / 100) * nw, sh = (cropRect.h / 100) * nh;
+
+    const maxDim = 1600;
+    let outW = sw, outH = sh;
+    if(outW > maxDim || outH > maxDim){
+      const scale = maxDim / Math.max(outW, outH);
+      outW = Math.round(outW * scale);
+      outH = Math.round(outH * scale);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = outW; canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    if(document.getElementById('enhanceToggle').checked){
+      ctx.filter = 'contrast(135%) brightness(112%) saturate(40%)';
+    }
+    ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, outW, outH);
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Failed to process image')), 'image/jpeg', 0.85);
   });
 }
 
-async function handleReceiptFileChosen(e){
+function handleReceiptFileChosen(e){
   const file = e.target.files[0];
+  e.target.value = ''; // reset so choosing the same file again still fires 'change'
   if(!file || !currentReceiptRow) return;
+  openCropEditor(file);
+}
+document.getElementById('receiptCameraInput').addEventListener('change', handleReceiptFileChosen);
+document.getElementById('receiptGalleryInput').addEventListener('change', handleReceiptFileChosen);
+
+document.getElementById('usePhotoBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('usePhotoBtn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+  try{
+    const blob = await cropAndEnhanceToBlob();
+    document.getElementById('receiptEditModal').style.display = 'none';
+    await uploadReceiptBlob(blob);
+  }catch(err){
+    console.error(err);
+    alert('Failed to process the photo: ' + err.message);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Use Photo';
+  }
+});
+
+async function uploadReceiptBlob(blob){
   const statusEl = document.getElementById('receiptStatus');
   const tr = currentReceiptRow;
   statusEl.textContent = 'Preparing…';
   try{
     const draftId = await ensureDraftSaved();
     if(!draftId) return;
-    statusEl.textContent = 'Compressing image…';
-    const blob = await resizeReceiptImage(file);
     const path = `${draftId}/${tr.dataset.rid}/${Date.now()}.jpg`;
     statusEl.textContent = 'Uploading…';
     const { error: upErr } = await sb.storage.from('scf-receipts').upload(path, blob, { contentType: 'image/jpeg' });
@@ -1406,12 +1561,8 @@ async function handleReceiptFileChosen(e){
   }catch(err){
     console.error(err);
     statusEl.textContent = 'Something went wrong: ' + err.message;
-  }finally{
-    e.target.value = '';
   }
 }
-document.getElementById('receiptCameraInput').addEventListener('change', handleReceiptFileChosen);
-document.getElementById('receiptGalleryInput').addEventListener('change', handleReceiptFileChosen);
 
 async function deleteReceipt(idx){
   if(!currentReceiptRow) return;
