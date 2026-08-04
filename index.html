@@ -233,13 +233,19 @@
   }
   .receipt-source-btn:hover{background:var(--navy);color:#fff;}
   .receipt-source-btn.primary{background:var(--navy);color:#fff;}
-  .crop-stage-wrap{text-align:center;}
+  .crop-modal-box{
+    width:min(94vw, 480px);max-height:92vh;max-height:92dvh;
+    display:flex;flex-direction:column;padding:16px;overflow:hidden;
+  }
+  .crop-modal-title{margin:0 0 10px;flex:none;}
+  .crop-stage-wrap{text-align:center;flex:1 1 auto;min-height:0;overflow:auto;}
   .crop-stage{
     position:relative;display:inline-block;max-width:100%;
     background:#111;border-radius:8px;touch-action:none;user-select:none;
     line-height:0;
   }
-  .crop-stage img{display:block;max-width:100%;max-height:60vh;pointer-events:none;}
+  .crop-stage img{display:block;max-width:100%;max-height:42vh;max-height:42dvh;pointer-events:none;}
+  .crop-modal-footer{flex:none;}
   .crop-box{
     position:absolute;border:2px solid #fff;box-shadow:0 0 0 2000px rgba(0,0,0,.5);
     cursor:move;touch-action:none;
@@ -583,7 +589,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.08.04-10:00</span>
+    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.08.04-10:30</span>
     <span>Page 1</span>
   </div>
 
@@ -620,9 +626,9 @@
 </div>
 
 <div class="modal-overlay" id="receiptEditModal">
-  <div class="modal-box" style="width:min(94vw, 480px);">
+  <div class="modal-box crop-modal-box">
     <span class="modal-close" onclick="cancelReceiptEdit()">✕</span>
-    <h3>Adjust Receipt</h3>
+    <h3 class="crop-modal-title">Adjust Receipt</h3>
     <div class="crop-stage-wrap">
       <div class="crop-stage" id="cropStage">
         <img id="cropImage" draggable="false" alt="Receipt to crop">
@@ -634,14 +640,16 @@
         </div>
       </div>
     </div>
-    <div class="crop-hint">Drag the corners to crop, or drag inside the box to move it.</div>
-    <label class="enhance-toggle">
-      <input type="checkbox" id="enhanceToggle" checked>
-      ✨ Enhance (boost contrast, like a document scan)
-    </label>
-    <div class="crop-actions">
-      <button type="button" class="receipt-source-btn" onclick="cancelReceiptEdit()">Cancel</button>
-      <button type="button" class="receipt-source-btn primary" id="usePhotoBtn">Use Photo</button>
+    <div class="crop-modal-footer">
+      <div class="crop-hint">Drag the corners to crop, or drag inside the box to move it.</div>
+      <label class="enhance-toggle">
+        <input type="checkbox" id="enhanceToggle" checked>
+        ✨ Enhance (boost contrast, like a document scan)
+      </label>
+      <div class="crop-actions">
+        <button type="button" class="receipt-source-btn" onclick="cancelReceiptEdit()">Cancel</button>
+        <button type="button" class="receipt-source-btn primary" id="usePhotoBtn">Use Photo</button>
+      </div>
     </div>
   </div>
 </div>
@@ -670,7 +678,7 @@
 const GOOGLE_CLIENT_ID = "215379470995-nb5h3akk1108k8fjjhjbu9ukjkojm4ng.apps.googleusercontent.com";
 const DRIVE_FOLDER_ID  = "1P3j-NC-PgDkDSnTujw3vYjCvvirpVuoG";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
-const VERSION_STAMP    = "MEG-FORMS-SCF v2026.08.04-10:00";
+const VERSION_STAMP    = "MEG-FORMS-SCF v2026.08.04-10:30";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
 let adminMode = false;
 
