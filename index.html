@@ -353,6 +353,7 @@
   <div class="auth-box" id="authBoxLogin">
     <h2>MEG-FORMS Login</h2>
     <div class="auth-sub">Sign in to access the Staff Claim Form (SCF)</div>
+    <div class="auth-sub" id="loginVersionStamp" style="margin-top:-14px;font-size:10.5px;opacity:.7;"></div>
     <div class="auth-error" id="loginError"></div>
     <input type="email" id="loginEmail" placeholder="Email">
     <div class="pw-wrap">
@@ -429,6 +430,7 @@
   <button id="btnLoadDrive" onclick="driveOpenPicker()" style="display:none">⬇️ Load from Drive</button>
   <button id="btnSyncLists" onclick="syncSharedLists()" style="display:none">🔄 Sync Lists</button>
   <button id="btnManageLists" onclick="openManageModal()" style="display:none">📋 Manage Lists</button>
+  <button id="btnBrowseSubmissions" onclick="openBrowseSubmissionsModal()" style="display:none">🗂️ Browse Submissions</button>
   <button onclick="doPrint()">🖨️ Print / Save PDF</button>
   <span class="tag" id="adminIndicator" style="display:none;background:#2e8b57;border-radius:5px;padding:5px 10px;">Admin Mode Active</span>
 </div>
@@ -589,7 +591,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.08.04-10:30</span>
+    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.08.06-11:30</span>
     <span>Page 1</span>
   </div>
 
@@ -606,6 +608,23 @@
     <span class="modal-close" onclick="closeDriveModal()">✕</span>
     <h3>Load Draft from Google Drive</h3>
     <div id="driveFileList">Loading...</div>
+  </div>
+</div>
+
+<!-- ============ ADMIN: BROWSE / EDIT / DELETE SUBMISSIONS ============ -->
+<div class="modal-overlay" id="browseSubmissionsModal">
+  <div class="modal-box" style="width:560px;max-height:85vh;display:flex;flex-direction:column;">
+    <span class="modal-close" onclick="closeBrowseSubmissionsModal()">✕</span>
+    <h3 style="margin-top:0;">🗂️ Browse Submissions</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <input type="text" id="browseFilterName" placeholder="Search by claimant name" style="flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:5px;" oninput="renderBrowseSubmissionsList()">
+      <select id="browseFilterStatus" onchange="renderBrowseSubmissionsList()" style="padding:6px 8px;border:1px solid var(--line);border-radius:5px;">
+        <option value="">All statuses</option>
+        <option value="draft">Draft</option>
+        <option value="submitted">Submitted</option>
+      </select>
+    </div>
+    <div id="browseSubmissionsList" style="overflow-y:auto;flex:1;">Loading...</div>
   </div>
 </div>
 
@@ -678,7 +697,7 @@
 const GOOGLE_CLIENT_ID = "215379470995-nb5h3akk1108k8fjjhjbu9ukjkojm4ng.apps.googleusercontent.com";
 const DRIVE_FOLDER_ID  = "1P3j-NC-PgDkDSnTujw3vYjCvvirpVuoG";
 const DRIVE_SCOPE      = "https://www.googleapis.com/auth/drive";
-const VERSION_STAMP    = "MEG-FORMS-SCF v2026.08.04-10:30";
+const VERSION_STAMP    = "MEG-FORMS-SCF v2026.08.06-11:30";
 const SHARED_LISTS_FILENAME = "scf_shared_lists.json";
 let adminMode = false;
 
@@ -778,7 +797,7 @@ async function doSignUp(){
 
 async function doSignOut(){
   await sb.auth.signOut();
-  currentUser = null; currentProfile = null; currentPerm = null; currentDraftId = null;
+  currentUser = null; currentProfile = null; currentPerm = null; currentDraftId = null; adminEditingSubmittedId = null;
   document.getElementById('authOverlay').style.display = 'flex';
   document.getElementById('topUserBar').style.display = 'none';
   clearAuthFields();
@@ -904,7 +923,8 @@ function buildSubmissionPayload(status){
 
 async function saveDraftToSupabase(){
   if(!currentUser){ alert('Please sign in first.'); return; }
-  const payload = buildSubmissionPayload('draft');
+  const statusToUse = (adminEditingSubmittedId && adminEditingSubmittedId === currentDraftId) ? 'submitted' : 'draft';
+  const payload = buildSubmissionPayload(statusToUse);
   try{
     let result;
     if(currentDraftId){
@@ -1009,14 +1029,15 @@ function seedBankNames(){
   if(loadList('scf_bankNameList').length===0) saveList('scf_bankNameList', DEFAULT_BANKS);
 }
 function buildFilenameBase(){
-  const claimedBy = (getComboVal(document.getElementById('claimedByCombo'))||'').trim();
+  const claimedBy = (getComboVal(document.getElementById('claimedByCombo'))||'').trim().replace(/\s+/g,'_');
   const serial    = (document.getElementById('serialDisplay').textContent||'').trim();
   const from      = (document.getElementById('periodFrom').value||'').slice(0,3);
   const to        = (document.getElementById('periodTo').value||'').slice(0,3);
   const year      = (document.getElementById('periodYear').value||'').trim();
   const period    = (from && to && from!==to) ? `${from}-${to}` : from;
-  const parts     = [claimedBy, serial, period, year].filter(Boolean);
-  return parts.length ? parts.join(' ') : 'Staff_Claim_Form';
+  const monthYear = `${period}${year}`;
+  const parts     = [claimedBy, serial, monthYear].filter(Boolean);
+  return parts.length ? parts.join('-') : 'Staff_Claim_Form';
 }
 
 const COMPANIES = {
@@ -1178,6 +1199,7 @@ function init(){
   document.getElementById('claimDate').value = n.ddmmyyyyhm;
   document.getElementById('checkedDate').value = n.ddmmyyyyhm.split(' ')[0];
   document.getElementById('refStamp').textContent = `Ref: ${VERSION_STAMP}`;
+  document.getElementById('loginVersionStamp').textContent = VERSION_STAMP;
   refreshSubmissionTimestamp();
   onCompanyChange();
   seedBankNames();     // seed default banks if first run
@@ -1295,6 +1317,7 @@ function applyAdminUI(){
   document.getElementById('btnLoadDrive').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnSyncLists').style.display = adminMode ? 'inline-block' : 'none';
   document.getElementById('btnManageLists').style.display = adminMode ? 'inline-block' : 'none';
+  document.getElementById('btnBrowseSubmissions').style.display = adminMode ? 'inline-block' : 'none';
   ['checkedByCombo'].forEach(id=>{
     const wrap = document.getElementById(id);
     if(wrap) wrap.querySelector('.combo-select').disabled = !adminMode;
@@ -1314,7 +1337,7 @@ function addRow(data){
   tr.dataset.receipts = JSON.stringify((data && data.receipts) || []);
   tr.innerHTML = `
     <td class="no">${tbody.children.length+1}</td>
-    <td><input type="text" class="r-date" placeholder="DD-MM-YYYY" value="${data?escapeHtml(data.date):''}" onblur="expandDateYear(this)"></td>
+    <td><input type="text" class="r-date" placeholder="DD-MM-YYYY" value="${data?escapeHtml(data.date):''}" oninput="autoFormatDateInput(this)" onblur="expandDateYear(this)"></td>
     <td>
       <div class="combo-wrap" data-list-key="scf_supplierList">
         <div class="combo-select-row">
@@ -1328,7 +1351,7 @@ function addRow(data){
       </div>
     </td>
     <td><input type="text" class="r-item" value="${data?escapeHtml(data.item):''}"></td>
-    <td class="amt"><input type="number" step="0.01" class="r-amount" value="${data?Number(data.amount).toFixed(2):''}" oninput="recalcTotal()" onblur="formatAmount(this)"></td>
+    <td class="amt"><input type="text" inputmode="numeric" class="r-amount" value="${data?Number(data.amount).toFixed(2):''}" oninput="autoFormatAmountInput(this); recalcTotal();" onblur="formatAmount(this)"></td>
     <td class="receipt-cell"><button type="button" class="receipt-btn" onclick="openReceiptPanel(this.closest('tr'))">📎 <span class="receipt-count"></span></button></td>
     <td class="rm"><button class="rm-btn" onclick="removeRow(this)">✕</button></td>
   `;
@@ -1345,6 +1368,14 @@ function renumberRows(){
   document.querySelectorAll('#rowsBody tr').forEach((tr,i)=>{
     tr.querySelector('.no').textContent = i+1;
   });
+}
+// Calculator/POS-style entry: claimant only ever types digits, the decimal
+// point inserts itself 2 places from the right automatically as they type
+// (e.g. typing "8655" shows "86.55") — no need to type "." manually.
+function autoFormatAmountInput(input){
+  const digits = input.value.replace(/[^0-9]/g, '').slice(0, 9);
+  if(digits === ''){ input.value = ''; return; }
+  input.value = (parseInt(digits, 10) / 100).toFixed(2);
 }
 function formatAmount(input){
   const v = parseFloat(input.value);
@@ -1652,6 +1683,98 @@ function applyDraft(d){
   updateSerial();
   checkSameClaimant();
   ['claimedByCombo','preparedByCombo','checkedByCombo'].forEach(id=>rememberValue('scf_staffList', getComboVal(document.getElementById(id))));
+}
+
+/* ===================== ADMIN: BROWSE / EDIT / DELETE SUBMISSIONS ===================== */
+// Tracks whether the currently-loaded record was already 'submitted' before an
+// admin opened it for correction, so a subsequent "Save Draft" doesn't silently
+// downgrade a finalized claim back to draft status.
+let adminEditingSubmittedId = null;
+
+function openBrowseSubmissionsModal(){
+  document.getElementById('browseSubmissionsModal').style.display = 'flex';
+  renderBrowseSubmissionsList();
+}
+function closeBrowseSubmissionsModal(){
+  document.getElementById('browseSubmissionsModal').style.display = 'none';
+}
+
+async function renderBrowseSubmissionsList(){
+  const listEl = document.getElementById('browseSubmissionsList');
+  listEl.innerHTML = '<div class="manage-empty">Loading...</div>';
+
+  const nameFilter = document.getElementById('browseFilterName').value.trim();
+  const statusFilter = document.getElementById('browseFilterStatus').value;
+
+  let query = sb.from('scf_submissions')
+    .select('id, serial_no, claimed_by, period_from, period_to, period_year, total, status, submitted_at, created_at');
+  if(nameFilter) query = query.ilike('claimed_by', `%${nameFilter}%`);
+  if(statusFilter) query = query.eq('status', statusFilter);
+  query = query.order('created_at', { ascending: false });
+
+  const { data, error } = await query;
+  if(error){ listEl.innerHTML = '<div class="manage-empty">Failed to load submissions.</div>'; console.error(error); return; }
+  if(!data || data.length === 0){ listEl.innerHTML = '<div class="manage-empty">No submissions match these filters.</div>'; return; }
+
+  listEl.innerHTML = data.map(sub => `
+    <div class="manage-list-item" style="flex-direction:column;align-items:flex-start;gap:4px;">
+      <div style="display:flex;justify-content:space-between;width:100%;">
+        <span style="font-weight:600;">${escapeHtml(sub.claimed_by)} — ${escapeHtml(sub.serial_no)}</span>
+        <span style="color:var(--muted);font-size:11px;text-transform:capitalize;">${escapeHtml(sub.status)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);">${escapeHtml(sub.period_from)}${sub.period_to && sub.period_to!==sub.period_from ? ' - '+escapeHtml(sub.period_to) : ''} ${escapeHtml(sub.period_year)} · RM ${Number(sub.total||0).toFixed(2)}</div>
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <button class="manage-tab-btn" onclick="loadSubmissionForEdit('${sub.id}')">✏️ Load to Edit</button>
+        <button class="manage-delete-btn" style="font-size:12px;" onclick="deleteSubmission('${sub.id}')">🗑 Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+// Reverses updateSerial()'s "MISC-<CODE>-<YYYYMM>-<HHMM>-<INITIALS>" format so a
+// loaded submission's serial number regenerates back to exactly what it was,
+// rather than needing the stored string reproduced verbatim.
+function parseSerialParts(serialNo){
+  const parts = (serialNo || '').split('-');
+  if(parts.length >= 5){
+    return { yyyymm: parts[2], hhmm: parts[3], initials: parts.slice(4).join('-') };
+  }
+  return { yyyymm: '', hhmm: '', initials: '' };
+}
+
+async function loadSubmissionForEdit(id){
+  if(!confirm('Load this submission into the form for editing? Any unsaved changes in the current form will be lost.')) return;
+  const { data: row, error } = await sb.from('scf_submissions').select('*').eq('id', id).single();
+  if(error || !row){ alert('Failed to load submission: ' + (error?.message || 'not found')); return; }
+
+  const companyKey = Object.keys(COMPANIES).find(k => COMPANIES[k].code === row.company_code) || 'meg';
+  applyDraft({
+    company: companyKey,
+    serial: parseSerialParts(row.serial_no),
+    periodFrom: row.period_from,
+    periodTo: row.period_to,
+    periodYear: row.period_year,
+    payMethod: row.payment_method,
+    claimedBy: row.claimed_by,
+    claimDate: row.claim_date,
+    bankName: row.bank_name,
+    bankAccountNo: row.bank_account_no,
+    rows: row.line_items || [],
+    preparedBy: row.prepared_by,
+    checkedBy: row.checked_by,
+    checkedDate: row.checked_date
+  });
+  currentDraftId = row.id;
+  adminEditingSubmittedId = (row.status === 'submitted') ? row.id : null;
+  closeBrowseSubmissionsModal();
+  alert(`Loaded ${row.claimed_by}'s claim (${row.serial_no}) — status "${row.status}". Saving will update this same record${adminEditingSubmittedId ? ' and keep it marked as submitted' : ''}.`);
+}
+
+async function deleteSubmission(id){
+  if(!confirm('Permanently delete this submission? This cannot be undone.')) return;
+  const { error } = await sb.from('scf_submissions').delete().eq('id', id);
+  if(error){ alert('Failed to delete: ' + error.message); return; }
+  if(currentDraftId === id){ currentDraftId = null; adminEditingSubmittedId = null; }
+  await renderBrowseSubmissionsList();
 }
 
 /* ===================== SAVE / LOAD LOCAL ===================== */
@@ -1994,6 +2117,19 @@ function buildPrintPages(){
   });
 }
 
+// Live-formats DD-MM-YYYY as digits are typed, inserting the dashes automatically
+// rather than requiring the claimant to type them — keeps expandDateYear() for the
+// separate 2-digit-year-to-4-digit expansion on blur.
+function autoFormatDateInput(input){
+  const digits = input.value.replace(/[^0-9]/g, '').slice(0, 8); // DDMMYYYY, max 8 digits
+  let formatted = digits;
+  if(digits.length > 4){
+    formatted = digits.slice(0,2) + '-' + digits.slice(2,4) + '-' + digits.slice(4);
+  } else if(digits.length > 2){
+    formatted = digits.slice(0,2) + '-' + digits.slice(2);
+  }
+  input.value = formatted;
+}
 function expandDateYear(input){
   let v = (input.value||'').trim();
   if(!v) return;
@@ -2005,44 +2141,7 @@ function expandDateYear(input){
     input.value = `${dd.padStart(2,'0')}-${mm.padStart(2,'0')}-${yy}`;
   }
 }
-/* ---------- Receipt photos: A4-efficient print layout ---------- */
-// Classic "justified gallery" packing: images of whatever natural aspect ratio
-// get grouped into shelf rows, then each completed row is scaled so it fills
-// the page width exactly — this is what avoids the "one receipt per page"
-// waste, since a row naturally holds however many images fit at a sensible height.
-function packJustifiedRows(items, pageWidthMm, targetRowHeightMm, gapMm, minRowHeightMm){
-  const rows = [];
-  let shelf = [];
-  let sumWidths = 0;
-  const widthAtTarget = it => targetRowHeightMm * it.aspect;
-
-  function finishRow(shelfItems, sumW, isLast){
-    const gaps = gapMm * (shelfItems.length - 1);
-    const availableForImages = pageWidthMm - gaps;
-    let scale = availableForImages / sumW;
-    let rowH = targetRowHeightMm * scale;
-    // Don't blow up a lonely trailing photo just to fill the row width
-    if(isLast && shelfItems.length < 3 && rowH > targetRowHeightMm * 1.3){
-      rowH = targetRowHeightMm;
-    }
-    rowH = Math.max(minRowHeightMm, rowH);
-    return { height: rowH, items: shelfItems.map(it => ({ ...it, width: rowH * it.aspect })) };
-  }
-
-  items.forEach(it=>{
-    const w = widthAtTarget(it);
-    const gapsIfAdded = gapMm * shelf.length;
-    if(shelf.length > 0 && (sumWidths + w + gapsIfAdded) > pageWidthMm){
-      rows.push(finishRow(shelf, sumWidths, false));
-      shelf = []; sumWidths = 0;
-    }
-    shelf.push(it);
-    sumWidths += w;
-  });
-  if(shelf.length > 0) rows.push(finishRow(shelf, sumWidths, true));
-  return rows;
-}
-
+/* ---------- Receipt photos: fixed 3-across x 2-down print grid ---------- */
 async function buildReceiptPrintPages(){
   const items = [];
   document.querySelectorAll('#rowsBody tr').forEach(tr=>{
@@ -2057,37 +2156,33 @@ async function buildReceiptPrintPages(){
   });
   if(items.length === 0) return;
 
-  // Download each receipt and measure its natural aspect ratio — printing
-  // needs live, valid image access regardless of how old the attachment is,
-  // so this always fetches fresh rather than relying on any stored URL.
+  // Download each receipt — printing needs live, valid image access regardless
+  // of how old the attachment is, so this always fetches fresh rather than
+  // relying on any stored URL.
   const loaded = [];
   for(const it of items){
     try{
       const { data: blob, error } = await sb.storage.from('scf-receipts').download(it.path);
       if(error || !blob) continue;
-      const url = URL.createObjectURL(blob);
-      const dims = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-        img.onerror = () => reject(new Error('Failed to decode image'));
-        img.src = url;
-      });
-      loaded.push({ ...it, url, aspect: dims.w / dims.h });
+      loaded.push({ ...it, url: URL.createObjectURL(blob) });
     }catch(e){ console.error('Skipping a receipt that failed to load for print:', it.path, e); }
   }
   if(loaded.length === 0) return;
 
-  const PAGE_W_MM = 182;   // 210mm A4 minus 14mm left/right padding, matching .print-page CSS
-  const PAGE_H_MM = 260;   // 297mm A4 minus top/bottom padding and room for the page footer
+  const PAGE_W_MM = 182;      // 210mm A4 minus 14mm left/right padding, matching .print-page CSS
   const GAP_MM = 4;
-  const CAPTION_H_MM = 6;
-  const TARGET_ROW_H_MM = 55;
-  const MIN_ROW_H_MM = 32;
+  const COLS = 3;
+  const ROWS_PER_PAGE = 2;
+  const PER_PAGE = COLS * ROWS_PER_PAGE;
+  const CELL_W_MM = (PAGE_W_MM - GAP_MM * (COLS - 1)) / COLS;
+  const CELL_IMG_H_MM = 112;  // fixed and generous — every receipt gets the same
+                               // guaranteed frame regardless of its aspect ratio,
+                               // instead of tall/narrow ones being squeezed thin
+  const CAPTION_H_MM = 9;
 
-  const rows = packJustifiedRows(loaded, PAGE_W_MM, TARGET_ROW_H_MM, GAP_MM, MIN_ROW_H_MM);
   const printArea = document.getElementById('printArea');
+  let page, grid, pageNum = 0, cellsOnPage = 0;
 
-  let page, pageUsedH, pageNum = 0;
   function newPage(){
     pageNum++;
     page = document.createElement('div');
@@ -2096,25 +2191,28 @@ async function buildReceiptPrintPages(){
     title.className = 'receipt-page-title';
     title.textContent = pageNum === 1 ? 'Supporting Receipts' : 'Supporting Receipts (continued)';
     page.appendChild(title);
+    grid = document.createElement('div');
+    grid.style.cssText = `display:grid;grid-template-columns:repeat(${COLS}, ${CELL_W_MM}mm);gap:${GAP_MM}mm;`;
+    page.appendChild(grid);
     printArea.appendChild(page);
-    pageUsedH = 10;
+    cellsOnPage = 0;
   }
   newPage();
 
-  rows.forEach(row=>{
-    const rowNeededH = row.height + CAPTION_H_MM + GAP_MM;
-    if(pageUsedH + rowNeededH > PAGE_H_MM) newPage();
-    const rowEl = document.createElement('div');
-    rowEl.style.cssText = `display:flex;gap:${GAP_MM}mm;margin-bottom:${GAP_MM}mm;align-items:flex-start;`;
-    row.items.forEach(it=>{
-      const cell = document.createElement('div');
-      cell.style.cssText = `width:${it.width}mm;`;
-      cell.innerHTML = `<img src="${it.url}" style="width:${it.width}mm;height:${row.height}mm;object-fit:cover;border:1px solid #ccc;border-radius:2px;display:block;">
-        <div style="font-size:7pt;color:#555;margin-top:1mm;line-height:1.2;">${escapeHtml(it.caption)}</div>`;
-      rowEl.appendChild(cell);
-    });
-    page.appendChild(rowEl);
-    pageUsedH += rowNeededH;
+  loaded.forEach(it=>{
+    if(cellsOnPage >= PER_PAGE) newPage();
+    const cell = document.createElement('div');
+    cell.style.cssText = `width:${CELL_W_MM}mm;`;
+    // object-fit:contain (not cover) — shows the whole receipt within its frame
+    // rather than cropping the edges off to fill the box exactly, which matters
+    // for a document you actually need to read in full, not just a thumbnail.
+    cell.innerHTML = `
+      <div style="width:${CELL_W_MM}mm;height:${CELL_IMG_H_MM}mm;border:1px solid #ccc;border-radius:2px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fafafa;">
+        <img src="${it.url}" style="max-width:100%;max-height:100%;object-fit:contain;display:block;">
+      </div>
+      <div style="font-size:7pt;color:#555;margin-top:1mm;line-height:1.2;">${escapeHtml(it.caption)}</div>`;
+    grid.appendChild(cell);
+    cellsOnPage++;
   });
 }
 
