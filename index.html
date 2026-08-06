@@ -1992,8 +1992,8 @@ function renderManageList(key){
     <div class="manage-list-item">
       <span>${escapeHtml(name)}</span>
       <span style="display:flex;gap:2px;">
-        <button class="manage-edit-btn" title="Rename" onclick="renameListItem(${JSON.stringify(key)},${JSON.stringify(name)})">✏️</button>
-        <button class="manage-delete-btn" title="Delete" onclick="deleteListItem(${JSON.stringify(key)},${JSON.stringify(name)})">✕</button>
+        <button class="manage-edit-btn" title="Rename" onclick="renameListItem(${escapeHtml(JSON.stringify(key))},${escapeHtml(JSON.stringify(name))})">✏️</button>
+        <button class="manage-delete-btn" title="Delete" onclick="deleteListItem(${escapeHtml(JSON.stringify(key))},${escapeHtml(JSON.stringify(name))})">✕</button>
       </span>
     </div>`).join('');
 }
