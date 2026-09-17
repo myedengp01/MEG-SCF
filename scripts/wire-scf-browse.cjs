@@ -13,11 +13,11 @@ for(const target of ['src/universal-claim-view-model.js','src/universal-browse-v
  if(!fs.existsSync(target)) throw Error(`Missing dependency: ${target}`);
 }
 const original=before.toString('utf8');
-const ending='</body>\n</html>';
-if(!original.endsWith(ending)) throw Error('Unexpected SCF HTML end; refusing patch');
+const ending=/<\/body>\r?\n<\/html>\r?\n?$/;
+if(!ending.test(original)) throw Error('Unexpected SCF HTML end; refusing patch');
 const inject='<script src="./src/universal-claim-view-model.js"></script>\n<script src="./src/universal-browse-viewer.js"></script>\n';
 if(original.includes(inject)) throw Error('Scripts already wired; refusing double insertion');
-const changed=original.slice(0,-ending.length)+inject+ending;
-if(!changed.endsWith(inject+ending)) throw Error('Patch validation failed');
+const changed=original.replace(ending,match=>inject+match);
+if(changed===original || changed.length!==original.length+inject.length) throw Error('Patch validation failed');
 fs.writeFileSync(file,changed);
 console.log('PASS SCF index SHA guard; appended only two read-only development scripts');
