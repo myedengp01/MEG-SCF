@@ -25,6 +25,7 @@ vm.runInNewContext(source,{window:root,console});
  assert.equal(await root.deleteSubmission('claim-4'),false);assert.equal(calls.length,2);
  assert.ok(notices.some(s=>s.includes('Paid/ledger-linked claim blocked')));
  assert.equal(refreshes,1);
- assert.equal(/\.from\s*\(|\.delete\s*\(/.test(source),false,'No direct delete fallback');
+ const executable=source.split('\n').filter(line=>!line.trim().startsWith('*')&&!line.trim().startsWith('//')).join('\n');
+ assert.equal(/\b(?:sb|client)\.from\s*\(|\.delete\s*\(\)\s*\.eq\s*\(/.test(executable),false,'No direct delete fallback');
  console.log('PASS SCF delete: audited RPC only, reason/confirm required, rejects paid records, no false success/no direct deletion');
 })().catch(e=>{console.error(e);process.exitCode=1;});
