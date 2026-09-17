@@ -20,3 +20,5 @@ jobs:
         env:
           MEG_FORM_CODE: scf
         run: node tests/universal-status.contract.test.cjs
+      - name: Read-only SCF Browse Submissions DOM contract
+        run: node tests/universal-browse.contract.test.cjs
