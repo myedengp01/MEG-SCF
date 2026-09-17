@@ -23,10 +23,11 @@ jobs:
           node-version: '22'
       - name: SHA-guarded integration on development branch only
         run: node scripts/wire-scf-browse.cjs
-      - name: Test canonical browse and audited delete without live records
+      - name: Test canonical Browse Payroll and audited Delete without live records
         run: |
           MEG_FORM_CODE=scf node tests/universal-status.contract.test.cjs
           node tests/universal-browse.contract.test.cjs
+          node tests/universal-payroll.contract.test.cjs
           node tests/universal-admin-delete.contract.test.cjs
           git diff --check
       - name: Commit only SCF index wiring to feature branch
@@ -35,5 +36,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- index.html
           git diff --cached --quiet && exit 0
-          git commit -m 'feat(scf): wire audited admin Delete through guarded RPC (WIP)'
+          git commit -m 'feat(scf): wire read-only universal Payroll status (WIP)'
           git push origin HEAD:feature/universal-claims-v2026-09-17-1430
