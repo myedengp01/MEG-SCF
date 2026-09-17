@@ -1,0 +1,38 @@
+name: Wire SCF Browse (feature branch only)
+on:
+  push:
+    branches:
+      - feature/universal-claims-v2026-09-17-1430
+    paths:
+      - scripts/wire-scf-browse.cjs
+permissions:
+  contents: write
+concurrency:
+  group: scf-browse-integration
+  cancel-in-progress: false
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Patch only original SHA-verified SCF index on development branch
+        run: node scripts/wire-scf-browse.cjs
+      - name: Test read-only canonical status and Browse DOM
+        run: |
+          MEG_FORM_CODE=scf node tests/universal-status.contract.test.cjs
+          node tests/universal-browse.contract.test.cjs
+          git diff --check
+      - name: Commit only SCF index wiring to feature branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- index.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat(scf): wire read-only canonical Browse Submissions badges (WIP)'
+          git push origin HEAD:feature/universal-claims-v2026-09-17-1430
