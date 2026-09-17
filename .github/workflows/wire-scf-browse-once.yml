@@ -1,4 +1,4 @@
-name: Wire SCF Browse (feature branch only)
+name: Wire SCF integration (feature branch only)
 on:
   push:
     branches:
@@ -21,12 +21,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Patch only original SHA-verified SCF index on development branch
+      - name: SHA-guarded integration on development branch only
         run: node scripts/wire-scf-browse.cjs
-      - name: Test read-only canonical status and Browse DOM
+      - name: Test canonical browse and audited delete without live records
         run: |
           MEG_FORM_CODE=scf node tests/universal-status.contract.test.cjs
           node tests/universal-browse.contract.test.cjs
+          node tests/universal-admin-delete.contract.test.cjs
           git diff --check
       - name: Commit only SCF index wiring to feature branch
         run: |
@@ -34,5 +35,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- index.html
           git diff --cached --quiet && exit 0
-          git commit -m 'feat(scf): wire read-only canonical Browse Submissions badges (WIP)'
+          git commit -m 'feat(scf): wire audited admin Delete through guarded RPC (WIP)'
           git push origin HEAD:feature/universal-claims-v2026-09-17-1430
