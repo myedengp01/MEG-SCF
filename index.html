@@ -755,7 +755,7 @@
 
 <script>
 /* ===================== CONFIG ===================== */
-const VERSION_STAMP    = "MEG-FORMS-SCF v2026.09.15-12:00";
+const VERSION_STAMP    = "MEG-FORMS-SCF v2026.09.18-13:00";
 let adminMode = false;
 
 /* ===================== SUPABASE CONFIG ===================== */
@@ -1828,7 +1828,11 @@ async function ensureDraftSaved(){
   }
 }
 
-function openReceiptPanel(tr){
+async function openReceiptPanel(tr){
+  if(!tr || !tr.isConnected) return;
+  const draftId = await persistReceiptDraft();
+  if(!draftId){ alert('Unable to save draft. Camera/gallery will not open until the claim is saved.'); return; }
+  if(!tr.isConnected || currentDraftId !== draftId) return;
   currentReceiptRow = tr;
   const supplier = tr.querySelector('.combo-select')?.selectedOptions[0]?.textContent || '';
   document.getElementById('receiptModalTitle').textContent = supplier ? `Receipts — ${supplier}` : 'Receipts';
@@ -2004,6 +2008,24 @@ document.getElementById('usePhotoBtn').addEventListener('click', async () => {
   }
 });
 
+async function persistReceiptDraft(){
+  if(!currentUser || !currentPerm?.can_submit || paidReadOnlyMode || adminEditingSubmittedId) return null;
+  try{
+    const record = await ensureSubmissionRecord();
+    if(record.status !== 'draft' || record.submitted_by !== currentUser.id) return null;
+    const payload = buildSubmissionPayload('draft');
+    payload.submitted_at = null;
+    const {data,error} = await sb.from('scf_submissions').update(payload)
+      .eq('id',record.id).eq('submitted_by',currentUser.id).eq('status','draft')
+      .select('id,serial_no,status');
+    if(error || !data?.[0]){ console.error('SCF draft save rejected',error); return null; }
+    currentDraftId=data[0].id;
+    setSerialNo(data[0].serial_no || getCurrentSerialNo(),true);
+    setScfCompanyIdentityLocked(true);
+    return data[0].id;
+  }catch(error){ console.error('SCF draft save failed',error); return null; }
+}
+
 async function uploadReceiptBlob(blob, isA4){
   const statusEl = document.getElementById('receiptStatus');
   const tr = currentReceiptRow;
@@ -2019,8 +2041,13 @@ async function uploadReceiptBlob(blob, isA4){
     receipts.push({ path, isA4: !!isA4 });
     tr.dataset.receipts = JSON.stringify(receipts);
     updateReceiptButton(tr);
+    const persistedId = await persistReceiptDraft();
+    if(persistedId !== draftId){
+      statusEl.textContent = 'Photo uploaded but claim save failed. Keep this page open and save the draft.';
+      return;
+    }
     await renderReceiptThumbs();
-    statusEl.textContent = 'Attached.';
+    statusEl.textContent = 'Attached and saved.';
   }catch(err){
     console.error(err);
     statusEl.textContent = 'Something went wrong: ' + err.message;
@@ -3881,7 +3908,10 @@ console.info('SCF Step 3 Revision v2026.09.15-12:00 active');
           }
         }, 350);
       }else{
-        SCF12_resetForNewClaim();
+        // Mobile auth can reinitialize while a draft is open; never discard it.
+        const existingDraft = Boolean(currentDraftId || adminEditingSubmittedId);
+        const unsavedItems = typeof formHasUnsavedWork === 'function' && formHasUnsavedWork();
+        if(!existingDraft && !unsavedItems) SCF12_resetForNewClaim();
       }
 
       return result;
