@@ -1,0 +1,15 @@
+'use strict';
+const fs=require('node:fs');
+const cp=require('node:child_process');
+const assert=require('node:assert/strict');
+assert.equal(cp.execFileSync('git',['branch','--show-current'],{encoding:'utf8'}).trim(),'feature/universal-claims-v2026-09-17-1430');
+const file='index.html';
+const html=fs.readFileSync(file,'utf8');
+const old=`      }else{\n        SCF12_resetForNewClaim();\n      }\n\n      return result;`;
+const replacement=`      }else{\n        // Auth initialization may run again after a mobile token refresh. Never\n        // clear an already loaded draft or unsaved item edits on re-entry.\n        const existingDraft = Boolean(currentDraftId || adminEditingSubmittedId);\n        const unsavedItems = typeof formHasUnsavedWork === 'function' && formHasUnsavedWork();\n        if(!existingDraft && !unsavedItems){\n          SCF12_resetForNewClaim();\n        }\n      }\n\n      return result;`;
+assert.equal(html.split(old).length,2,'Auth reset block changed; review manually');
+assert.doesNotMatch(html,/const existingDraft = Boolean\(currentDraftId \|\| adminEditingSubmittedId\)/);
+const next=html.replace(old,replacement);
+assert.equal(next.split(replacement).length,2);
+fs.writeFileSync(file,next);
+console.log('Guarded SCF auth reset: loaded draft and unsaved item edits preserved. Feature branch only.');
