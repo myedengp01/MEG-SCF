@@ -1,0 +1,41 @@
+name: Guard SCF mobile draft on auth reinitialization (feature only)
+on:
+  push:
+    branches: [feature/universal-claims-v2026-09-17-1430]
+    paths:
+      - '.github/workflows/guard-mobile-draft-auth-reset.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  guard:
+    if: github.ref == 'refs/heads/feature/universal-claims-v2026-09-17-1430'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate exact patch and existing SCF integration
+        run: |
+          node --check scripts/guard-mobile-draft-auth-reset.cjs
+          test "$(grep -Fc '        SCF12_resetForNewClaim();' index.html)" -ge 1
+          test "$(grep -Fc '      }else{' index.html)" -ge 1
+      - name: Preserve loaded draft and unsaved edits on auth refresh
+        run: node scripts/guard-mobile-draft-auth-reset.cjs
+      - name: Verify only expected auth block changed
+        run: |
+          git diff --check
+          git diff -- index.html | grep -F '+        const existingDraft = Boolean(currentDraftId || adminEditingSubmittedId);'
+          git diff -- index.html | grep -F '+        const unsavedItems = typeof formHasUnsavedWork'
+          test "$(git diff --name-only)" = 'index.html'
+          test "$(git diff --numstat -- index.html | cut -f2)" = '1'
+      - name: Commit guarded patch only to feature branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- index.html
+          git commit -m 'fix(scf): retain loaded draft and unsaved rows during auth reinitialization'
+          git push origin HEAD:feature/universal-claims-v2026-09-17-1430
