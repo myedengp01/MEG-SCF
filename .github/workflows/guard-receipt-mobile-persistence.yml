@@ -1,0 +1,43 @@
+name: Guard SCF receipt mobile persistence (feature only)
+on:
+  push:
+    branches: [feature/universal-claims-v2026-09-17-1430]
+    paths:
+      - '.github/workflows/guard-receipt-mobile-persistence.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  guard:
+    if: github.ref == 'refs/heads/feature/universal-claims-v2026-09-17-1430'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate exact baseline and script
+        run: |
+          node --check scripts/guard-receipt-mobile-persistence.cjs
+          test "$(git hash-object index.html)" = 'd912a1e895f4654953e6f4135a2b47858801eb60'
+      - name: Apply guarded receipt persistence patch
+        run: node scripts/guard-receipt-mobile-persistence.cjs
+      - name: Validate scope and syntax
+        run: |
+          git diff --check
+          test "$(git diff --name-only)" = 'index.html'
+          grep -F 'async function persistReceiptDraft()' index.html
+          grep -F 'const persistedId = await persistReceiptDraft();' index.html
+          grep -F 'const draftId = await persistReceiptDraft();' index.html
+          node - <<'NODE'
+          const fs=require('node:fs');const vm=require('node:vm');const html=fs.readFileSync('index.html','utf8');const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)];for(const s of scripts){if(s[1].trim())new vm.Script(s[1]);}console.log('Inline JavaScript syntax valid:',scripts.length,'script tags');
+          NODE
+      - name: Commit feature branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- index.html
+          git commit -m 'fix(scf): save draft before mobile photo and persist receipt after upload'
+          git push origin HEAD:feature/universal-claims-v2026-09-17-1430
