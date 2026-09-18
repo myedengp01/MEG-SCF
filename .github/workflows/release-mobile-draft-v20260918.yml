@@ -1,0 +1,41 @@
+name: SCF isolated mobile draft release v2026.09.18-13:00
+on:
+  push:
+    branches: [release/scf-mobile-draft-v2026.09.18-1300]
+    paths: ['.github/workflows/release-mobile-draft-v20260918.yml']
+permissions:
+  contents: write
+jobs:
+  release:
+    if: github.ref == 'refs/heads/release/scf-mobile-draft-v2026.09.18-1300'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify backup and untouched production baseline
+        run: |
+          test "$(git rev-parse origin/main)" = '116d3680f54eb295be746b0a204e0048abbf574d'
+          test "$(git rev-parse origin/backup/scf-pre-v2026.09.18-1300)" = '116d3680f54eb295be746b0a204e0048abbf574d'
+          test "$(git hash-object index.html)" = '2580653d3945964f4002b38db206142cce35b27c'
+          node --check scripts/release-mobile-draft-v20260918.cjs
+      - name: Apply isolated fix and synchronize version
+        run: node scripts/release-mobile-draft-v20260918.cjs
+      - name: Check changes and JavaScript syntax
+        run: |
+          git diff --check
+          test "$(git diff --name-only | sort)" = "$(printf 'index.html\nversion.json' | sort)"
+          node - <<'NODE'
+          const fs=require('node:fs'),vm=require('node:vm');const html=fs.readFileSync('index.html','utf8');for(const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)){if(match[1].trim())new vm.Script(match[1]);}const v=JSON.parse(fs.readFileSync('version.json','utf8'));if(v.uvn!=='v2026.09.18-13:00'||!html.includes('MEG-FORMS-SCF v2026.09.18-13:00'))throw Error('UVN mismatch');console.log('SCF inline scripts parse and UVN synchronized');
+          NODE
+      - name: Commit only index and version to production
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- index.html version.json
+          git commit -m 'fix(scf): mobile draft persistence v2026.09.18-13:00'
+          git push origin HEAD:main
