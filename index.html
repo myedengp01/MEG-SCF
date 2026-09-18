@@ -3881,7 +3881,13 @@ console.info('SCF Step 3 Revision v2026.09.15-12:00 active');
           }
         }, 350);
       }else{
-        SCF12_resetForNewClaim();
+        // Auth initialization may run again after a mobile token refresh. Never
+        // clear an already loaded draft or unsaved item edits on re-entry.
+        const existingDraft = Boolean(currentDraftId || adminEditingSubmittedId);
+        const unsavedItems = typeof formHasUnsavedWork === 'function' && formHasUnsavedWork();
+        if(!existingDraft && !unsavedItems){
+          SCF12_resetForNewClaim();
+        }
       }
 
       return result;
