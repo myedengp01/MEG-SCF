@@ -609,7 +609,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.09.15-12:00</span>
+    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.09.20:13:30</span>
     <span>Page 1</span>
   </div>
 
@@ -755,7 +755,7 @@
 
 <script>
 /* ===================== CONFIG ===================== */
-const VERSION_STAMP    = "MEG-FORMS-SCF v2026.09.18-13:00";
+const VERSION_STAMP    = "MEG-FORMS-SCF v2026.09.20:13:30";
 let adminMode = false;
 
 /* ===================== SUPABASE CONFIG ===================== */
@@ -785,7 +785,7 @@ function setScfCompanyIdentityLocked(locked){
 }
 function getScfDocumentRef(companyCode){
   const code = String(companyCode || 'MEG').toUpperCase();
-  const ver = String(VERSION_STAMP || 'MEG-FORMS-SCF v2026.09.15-12:00').replace(/^MEG-FORMS-SCF\\s+/, '');
+  const ver = String(VERSION_STAMP || 'MEG-FORMS-SCF v2026.09.20:13:30').replace(/^MEG-FORMS-SCF\\s+/, '');
   return code + '-FORMS-SCF ' + ver;
 }
 function updateScfDocumentRef(){
@@ -3163,7 +3163,7 @@ window.onload = async function(){
 </script>
 
 <script id="meg-dashboard-deeplink-hotfix-scf">
-/* MEG-FORMS Dashboard deep-link compatibility hotfix 2026.09.10-08:45 */
+/* MEG-FORMS Dashboard deep-link compatibility hotfix v2026.09.20:13:30 */
 (function(){
   'use strict';
   if (window.__MEG_DASH_DEEPLINK_SCF__) return;
@@ -3400,7 +3400,7 @@ if(typeof applyAdminUI==='function'&&!applyAdminUI.__scf3){
 }
 
 styles();modal();button();banner();access();setTimeout(access,400);setTimeout(access,1200);
-console.info('SCF Step 3 Revision v2026.09.15-12:00 active');
+console.info('SCF Step 3 Revision v2026.09.20:13:30 active');
 })();
 
 </script>
@@ -3410,7 +3410,7 @@ console.info('SCF Step 3 Revision v2026.09.15-12:00 active');
 (function(){
   'use strict';
 
-  const SCF12_UVN = 'MEG-FORMS-SCF v2026.09.15-12:00';
+  const SCF12_UVN = 'MEG-FORMS-SCF v2026.09.20:13:30';
   let SCF12_revisionEditing = false;
   let SCF12_hardCompanyLock = false;
   let SCF12_resetting = false;
@@ -4004,7 +4004,7 @@ console.info('SCF Step 3 Revision v2026.09.15-12:00 active');
      --------------------------------------------------------- */
   window.getScfDocumentRef = function(companyCode){
     const code = String(companyCode || 'MEG').toUpperCase();
-    return code + '-FORMS-SCF v2026.09.15-12:00';
+    return code + '-FORMS-SCF v2026.09.20:13:30';
   };
 
   ensureNewClaimButton();
