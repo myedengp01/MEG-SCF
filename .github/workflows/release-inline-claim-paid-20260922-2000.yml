@@ -14,7 +14,7 @@ jobs:
         with:
           ref: main
           persist-credentials: true
-      - name: Apply exact-anchor SCF inline release
+      - name: Apply guarded SCF inline release and verify
         run: |
           python3 tools/release_scf_inline_20260922.py
           node --check universal-payment-inline.js
