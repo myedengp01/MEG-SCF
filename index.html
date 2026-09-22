@@ -609,7 +609,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.09.20:13:30</span>
+    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.09.22-20:00</span>
     <span>Page 1</span>
   </div>
 
@@ -755,7 +755,7 @@
 
 <script>
 /* ===================== CONFIG ===================== */
-const VERSION_STAMP    = "MEG-FORMS-SCF v2026.09.20:13:30";
+const VERSION_STAMP    = "MEG-FORMS-SCF v2026.09.22-20:00";
 let adminMode = false;
 
 /* ===================== SUPABASE CONFIG ===================== */
@@ -785,7 +785,7 @@ function setScfCompanyIdentityLocked(locked){
 }
 function getScfDocumentRef(companyCode){
   const code = String(companyCode || 'MEG').toUpperCase();
-  const ver = String(VERSION_STAMP || 'MEG-FORMS-SCF v2026.09.20:13:30').replace(/^MEG-FORMS-SCF\\s+/, '');
+  const ver = String(VERSION_STAMP || 'MEG-FORMS-SCF v2026.09.22-20:00').replace(/^MEG-FORMS-SCF\\s+/, '');
   return code + '-FORMS-SCF ' + ver;
 }
 function updateScfDocumentRef(){
@@ -2182,19 +2182,19 @@ async function renderBrowseSubmissionsList(){  const listEl = document.getElemen
   if(!data || data.length === 0){ listEl.innerHTML = '<div class="manage-empty">No submissions match these filters.</div>'; return; }
 
   listEl.innerHTML = data.map(sub => `
-    <div class="manage-list-item" style="flex-direction:column;align-items:flex-start;gap:4px;">
+    <div class="manage-list-item" data-meg-scf-row="true" style="flex-direction:column;align-items:flex-start;gap:4px;">
       <div style="display:flex;justify-content:space-between;width:100%;">
         <span style="font-weight:600;">${escapeHtml(sub.claimed_by)} — ${escapeHtml(sub.serial_no)}</span>
         <span style="color:var(--muted);font-size:11px;text-transform:capitalize;">${escapeHtml(sub.status)}</span>
       </div>
       <div style="font-size:12px;color:var(--muted);">${escapeHtml(sub.period_from)}${sub.period_to && sub.period_to!==sub.period_from ? ' - '+escapeHtml(sub.period_to) : ''} ${escapeHtml(sub.period_year)} · RM ${Number(sub.total||0).toFixed(2)}</div>
       ${sub.submitted_at ? `<div style="font-size:11px;color:var(--muted);">📤 Submitted: ${escapeHtml(formatDateTimeMY(sub.submitted_at))}</div>` : ''}
-      ${sub.status==='submitted' ? `<div style="font-size:12px;">${renderPaymentBadge(sub)}</div>` : ''}
       <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">
         ${sub.payment_confirmed
           ? `<button class="manage-tab-btn" onclick="loadPaidSubmissionReadOnly('${sub.id}')">🔒 View (Read-only)</button>`
           : `<button class="manage-tab-btn" onclick="loadSubmissionForEdit('${sub.id}')">✏️ Load to Edit</button>`}
-        <button class="manage-delete-btn" style="font-size:12px;" onclick="deleteSubmission('${sub.id}')">🗑 Delete</button>
+        <button class="manage-delete-btn" data-meg-scf-delete="true" style="display:none;font-size:12px;" onclick="event.stopPropagation();window.megScfAdminDelete('${sub.id}')">🗑 Delete</button>
+        <span data-meg-scf-id="${sub.id}" data-meg-scf-local-paid="${sub.payment_confirmed===true}" data-meg-scf-admin="true" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:3px;">Checking payment status…</span>
       </div>
     </div>`).join('');
 }
@@ -2315,11 +2315,10 @@ async function loadSubmissionForEdit(id){
 }
 
 async function deleteSubmission(id){
-  if(!confirm('Permanently delete this submission? This cannot be undone.')) return;
-  const { error } = await sb.from('scf_submissions').delete().eq('id', id);
-  if(error){ alert('Failed to delete: ' + error.message); return; }
-  if(currentDraftId === id){ currentDraftId = null; adminEditingSubmittedId = null; serialLocked = false; setScfCompanyIdentityLocked(false); }
-  await renderBrowseSubmissionsList();
+  if(typeof window.megScfAdminDelete !== 'function'){
+    alert('Secure Admin Delete is unavailable. No claim was deleted.'); return;
+  }
+  await window.megScfAdminDelete(id);
 }
 
 /* ===================== PAYROLL VIEWER (read-only, can_view accounts) ===================== */
@@ -2392,9 +2391,10 @@ async function renderPayrollViewerList(){
     const companyName = Object.values(COMPANIES).find(c => c.code === row.company_code)?.name || row.company_code;
     const expanded = pvExpandedId === row.id;
     return `
-    <div class="manage-list-item" style="flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer;" onclick="togglePayrollClaimDetail('${row.id}')">
+    <div class="manage-list-item" data-meg-scf-row="true" style="flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer;" onclick="togglePayrollClaimDetail('${row.id}')">
       <div style="display:flex;justify-content:space-between;width:100%;">
         <span style="font-weight:600;">${escapeHtml(row.claimed_by)} — ${escapeHtml(row.serial_no)}</span>
+        <span data-meg-scf-id="${row.id}" data-meg-scf-local-paid="${row.payment_confirmed===true}" data-meg-scf-admin="false" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:3px;" onclick="event.stopPropagation()">Checking payment status…</span>
         <span style="color:var(--muted);font-size:11px;">RM ${Number(row.total||0).toFixed(2)}</span>
       </div>
       <div style="font-size:12px;color:var(--muted);">${escapeHtml(companyName)} · ${escapeHtml(row.period_from)}${row.period_to && row.period_to!==row.period_from ? ' - '+escapeHtml(row.period_to) : ''} ${escapeHtml(row.period_year)}</div>
@@ -3163,7 +3163,7 @@ window.onload = async function(){
 </script>
 
 <script id="meg-dashboard-deeplink-hotfix-scf">
-/* MEG-FORMS Dashboard deep-link compatibility hotfix v2026.09.20:13:30 */
+/* MEG-FORMS Dashboard deep-link compatibility hotfix v2026.09.22-20:00 */
 (function(){
   'use strict';
   if (window.__MEG_DASH_DEEPLINK_SCF__) return;
@@ -3400,7 +3400,7 @@ if(typeof applyAdminUI==='function'&&!applyAdminUI.__scf3){
 }
 
 styles();modal();button();banner();access();setTimeout(access,400);setTimeout(access,1200);
-console.info('SCF Step 3 Revision v2026.09.20:13:30 active');
+console.info('SCF Step 3 Revision v2026.09.22-20:00 active');
 })();
 
 </script>
@@ -3410,7 +3410,7 @@ console.info('SCF Step 3 Revision v2026.09.20:13:30 active');
 (function(){
   'use strict';
 
-  const SCF12_UVN = 'MEG-FORMS-SCF v2026.09.20:13:30';
+  const SCF12_UVN = 'MEG-FORMS-SCF v2026.09.22-20:00';
   let SCF12_revisionEditing = false;
   let SCF12_hardCompanyLock = false;
   let SCF12_resetting = false;
@@ -4004,7 +4004,7 @@ console.info('SCF Step 3 Revision v2026.09.20:13:30 active');
      --------------------------------------------------------- */
   window.getScfDocumentRef = function(companyCode){
     const code = String(companyCode || 'MEG').toUpperCase();
-    return code + '-FORMS-SCF v2026.09.20:13:30';
+    return code + '-FORMS-SCF v2026.09.22-20:00';
   };
 
   ensureNewClaimButton();
@@ -4036,5 +4036,6 @@ console.info('SCF Step 3 Revision v2026.09.20:13:30 active');
 })();
 
 </script>
+<script src="./universal-payment-inline.js?v=20260922-2000" defer></script>
 </body>
 </html>
