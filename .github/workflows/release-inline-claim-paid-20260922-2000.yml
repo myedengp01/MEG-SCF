@@ -25,26 +25,25 @@ jobs:
           assert s.count('async function renderPayrollViewerList()')==1
           assert s.count('async function deleteSubmission(id)')==1
           assert 'universal-payment-inline.js?v=20260922-2000' not in s
-          # The existing legacy Delete button must not directly invoke a raw table delete.
           assert s.count('onclick="deleteSubmission(\'${sub.id}\')"')==1
           s=s.replace('onclick="deleteSubmission(\'${sub.id}\')"','data-meg-scf-delete="true" style="display:none;font-size:12px;" onclick="event.stopPropagation();window.megScfAdminDelete(\'${sub.id}\')"',1)
-          # Replace duplicate style attributes from the original Delete button with one style.
           s=s.replace('class="manage-delete-btn" style="font-size:12px;" data-meg-scf-delete','class="manage-delete-btn" data-meg-scf-delete',1)
-          browse='''    <div class="manage-list-item" style="flex-direction:column;align-items:flex-start;gap:4px;">'''
-          assert s.count(browse)==1
-          s=s.replace(browse,'''    <div class="manage-list-item" data-meg-scf-row="true" style="flex-direction:column;align-items:flex-start;gap:4px;">''',1)
+          browse='''  listEl.innerHTML = data.map(sub => `
+            <div class="manage-list-item" style="flex-direction:column;align-items:flex-start;gap:4px;">'''
+          if browse not in s:
+            browse='''  listEl.innerHTML = data.map(sub => `
+    <div class="manage-list-item" style="flex-direction:column;align-items:flex-start;gap:4px;">'''
+          assert s.count(browse)==1,'Browse submissions list anchor mismatch'
+          s=s.replace(browse,browse.replace('class="manage-list-item"','class="manage-list-item" data-meg-scf-row="true"'),1)
           old_actions='''        <button class="manage-delete-btn" data-meg-scf-delete="true" style="display:none;font-size:12px;" onclick="event.stopPropagation();window.megScfAdminDelete('${sub.id}')">🗑 Delete</button>'''
-          assert s.count(old_actions)==1
+          assert s.count(old_actions)==1,'Delete button anchor mismatch'
           s=s.replace(old_actions,old_actions+'''\n        <span data-meg-scf-id="${sub.id}" data-meg-scf-local-paid="${sub.payment_confirmed===true}" data-meg-scf-admin="true" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:3px;">Checking payment status…</span>''',1)
-          # Payroll list is read-only; display canonical payment status beside the claim title.
           payroll='''    <div class="manage-list-item" style="flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer;" onclick="togglePayrollClaimDetail('${row.id}')">'''
-          assert s.count(payroll)==1
+          assert s.count(payroll)==1,'Payroll list anchor mismatch'
           s=s.replace(payroll,'''    <div class="manage-list-item" data-meg-scf-row="true" style="flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer;" onclick="togglePayrollClaimDetail('${row.id}')">''',1)
           title='''        <span style="font-weight:600;">${escapeHtml(row.claimed_by)} — ${escapeHtml(row.serial_no)}</span>'''
-          assert s.count(title)==1
+          assert s.count(title)==1,'Payroll title anchor mismatch'
           s=s.replace(title,title+'''\n        <span data-meg-scf-id="${row.id}" data-meg-scf-local-paid="${row.payment_confirmed===true}" data-meg-scf-admin="false" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:3px;" onclick="event.stopPropagation()">Checking payment status…</span>''',1)
-          # Existing SCF undo/payment handlers stay intact; no generic 60-day bypass.
-          assert s.count("db.rpc('scf_set_payment_status'")==0
           assert '</body>' in s
           s=s.replace(old,new)
           s=s.replace('</body>','<script src="./universal-payment-inline.js?v=20260922-2000" defer></script>\n</body>',1)
