@@ -53,9 +53,11 @@ replace_once(
   await window.megScfAdminDelete(id);
 }''',
     'legacy delete guard')
-assert '</body>' in s
+assert s.count('</body>') >= 1, 'missing closing body tag'
 s = s.replace(old_uvn, new_uvn)
-replace_once('</body>', '<script src="./universal-payment-inline.js?v=20260922-2000" defer></script>\n</body>', 'script wiring')
+head, tail = s.rsplit('</body>', 1)
+assert '</html>' in tail, 'last body tag is not document closing tag'
+s = head + '<script src="./universal-payment-inline.js?v=20260922-2000" defer></script>\n</body>' + tail
 assert s.count('data-meg-scf-id=') == 2
 assert s.count('data-meg-scf-delete=') == 1
 assert s.count('universal-payment-inline.js?v=20260922-2000') == 1
