@@ -366,6 +366,7 @@
     .receipt-page-title{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:6px;}
     .receipt-print-cell{break-inside:avoid;page-break-inside:avoid;}
   }
+#receiptModal.receipt-view-only .receipt-add-row{display:none;}
 </style>
 </head>
 <body>
@@ -609,7 +610,7 @@
   </div>
 
   <div class="footer-stamp">
-    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.09.22-20:00</span>
+    <span id="refStamp">Ref: MEG-FORMS-SCF v2026.11.10-17:30</span>
     <span>Page 1</span>
   </div>
 
@@ -755,7 +756,7 @@
 
 <script>
 /* ===================== CONFIG ===================== */
-const VERSION_STAMP    = "MEG-FORMS-SCF v2026.09.22-20:00";
+const VERSION_STAMP    = "MEG-FORMS-SCF v2026.11.10-17:30";
 let adminMode = false;
 
 /* ===================== SUPABASE CONFIG ===================== */
@@ -785,7 +786,7 @@ function setScfCompanyIdentityLocked(locked){
 }
 function getScfDocumentRef(companyCode){
   const code = String(companyCode || 'MEG').toUpperCase();
-  const ver = String(VERSION_STAMP || 'MEG-FORMS-SCF v2026.09.22-20:00').replace(/^MEG-FORMS-SCF\\s+/, '');
+  const ver = String(VERSION_STAMP || 'MEG-FORMS-SCF v2026.11.10-17:30').replace(/^MEG-FORMS-SCF\\s+/, '');
   return code + '-FORMS-SCF ' + ver;
 }
 function updateScfDocumentRef(){
@@ -1828,15 +1829,29 @@ async function ensureDraftSaved(){
   }
 }
 
+// v2026.11.10: receipts can always be LOOKED AT. Adding / removing photos needs the claim saved as the
+// signed-in user's own draft; when that is not possible (a submitted claim, someone else's claim opened by
+// an admin/approver, a paid claim, view-only access, or the save failed) the panel opens view-only instead
+// of refusing to open.
+let receiptViewOnly = false;
 async function openReceiptPanel(tr){
   if(!tr || !tr.isConnected) return;
-  const draftId = await persistReceiptDraft();
-  if(!draftId){ alert('Unable to save draft. Camera/gallery will not open until the claim is saved.'); return; }
-  if(!tr.isConnected || currentDraftId !== draftId) return;
+  const cannotEdit = !currentUser || !currentPerm?.can_submit || viewerOnlyMode || paidReadOnlyMode || !!adminEditingSubmittedId;
+  let draftId = null;
+  if(!cannotEdit){
+    draftId = await persistReceiptDraft();
+    if(!tr.isConnected) return;
+    if(draftId && currentDraftId !== draftId) return;
+  }
+  receiptViewOnly = !draftId;
   currentReceiptRow = tr;
   const supplier = tr.querySelector('.combo-select')?.selectedOptions[0]?.textContent || '';
   document.getElementById('receiptModalTitle').textContent = supplier ? `Receipts — ${supplier}` : 'Receipts';
-  document.getElementById('receiptStatus').textContent = '';
+  document.getElementById('receiptStatus').textContent = receiptViewOnly
+    ? (cannotEdit ? 'View only — this claim is not your draft, so photos cannot be added or removed here.'
+                  : 'View only — the claim could not be saved as your draft just now, so photos cannot be added. Save the draft, then try again.')
+    : '';
+  document.getElementById('receiptModal').classList.toggle('receipt-view-only', receiptViewOnly);
   renderReceiptThumbs();
   document.getElementById('receiptModal').style.display = 'flex';
 }
@@ -1860,13 +1875,14 @@ async function renderReceiptThumbs(){
   }));
   thumbsEl.innerHTML = withUrls.map((r, idx) => `
     <div class="receipt-thumb" style="position:relative;">
-      <img src="${r.signedUrl}" alt="Receipt">
+      <a href="${r.signedUrl}" target="_blank" rel="noopener" title="Open full size"><img src="${r.signedUrl}" alt="Receipt"></a>
       ${r.isA4 ? `<span style="position:absolute;top:2px;left:2px;background:#1565c0;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;">A4</span>` : ''}
-      <button type="button" class="del-btn" onclick="deleteReceipt(${idx})">✕</button>
-      <button type="button" class="del-btn" style="right:24px;background:${r.isA4?'#1565c0':'#888'};" title="Toggle A4 landscape printing" onclick="toggleReceiptA4(${idx})">A4</button>
+      ${receiptViewOnly ? '' : `<button type="button" class="del-btn" onclick="deleteReceipt(${idx})">✕</button>
+      <button type="button" class="del-btn" style="right:24px;background:${r.isA4?'#1565c0':'#888'};" title="Toggle A4 landscape printing" onclick="toggleReceiptA4(${idx})">A4</button>`}
     </div>`).join('');
 }
 function toggleReceiptA4(idx){
+  if(receiptViewOnly) return;
   const tr = currentReceiptRow;
   const receipts = JSON.parse(tr.dataset.receipts || '[]');
   if(!receipts[idx]) return;
@@ -2055,6 +2071,7 @@ async function uploadReceiptBlob(blob, isA4){
 }
 
 async function deleteReceipt(idx){
+  if(receiptViewOnly) return;
   if(!currentReceiptRow) return;
   if(!confirm('Remove this receipt photo?')) return;
   const tr = currentReceiptRow;
@@ -3163,7 +3180,7 @@ window.onload = async function(){
 </script>
 
 <script id="meg-dashboard-deeplink-hotfix-scf">
-/* MEG-FORMS Dashboard deep-link compatibility hotfix v2026.09.22-20:00 */
+/* MEG-FORMS Dashboard deep-link compatibility hotfix v2026.11.10-17:30 */
 (function(){
   'use strict';
   if (window.__MEG_DASH_DEEPLINK_SCF__) return;
@@ -3400,7 +3417,7 @@ if(typeof applyAdminUI==='function'&&!applyAdminUI.__scf3){
 }
 
 styles();modal();button();banner();access();setTimeout(access,400);setTimeout(access,1200);
-console.info('SCF Step 3 Revision v2026.09.22-20:00 active');
+console.info('SCF Step 3 Revision v2026.11.10-17:30 active');
 })();
 
 </script>
@@ -3410,7 +3427,7 @@ console.info('SCF Step 3 Revision v2026.09.22-20:00 active');
 (function(){
   'use strict';
 
-  const SCF12_UVN = 'MEG-FORMS-SCF v2026.09.22-20:00';
+  const SCF12_UVN = 'MEG-FORMS-SCF v2026.11.10-17:30';
   let SCF12_revisionEditing = false;
   let SCF12_hardCompanyLock = false;
   let SCF12_resetting = false;
@@ -4004,7 +4021,7 @@ console.info('SCF Step 3 Revision v2026.09.22-20:00 active');
      --------------------------------------------------------- */
   window.getScfDocumentRef = function(companyCode){
     const code = String(companyCode || 'MEG').toUpperCase();
-    return code + '-FORMS-SCF v2026.09.22-20:00';
+    return code + '-FORMS-SCF v2026.11.10-17:30';
   };
 
   ensureNewClaimButton();
